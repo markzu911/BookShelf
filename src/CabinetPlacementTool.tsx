@@ -413,7 +413,11 @@ export function CabinetPlacementTool() {
         await verifyIntegral(platform);
       }
       const selectedPerspective = settings.perspectives[0] || "wide";
-      let generationSettings = { ...settings, perspectives: [selectedPerspective] };
+      let generationSettings: PlacementSettings = {
+        ...settings,
+        perspectives: [selectedPerspective],
+        clarity: settings.clarity === "4K" ? "2K" : settings.clarity
+      };
 
       const generateScenes = (activeSettings: PlacementSettings) => useVirtualRoom
         ? generateVirtualRoomImages(furnitureImage, analysis, activeSettings, platform.context, platform.prompt)

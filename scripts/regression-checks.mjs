@@ -100,6 +100,7 @@ assert.match(componentSource, /单选；每次只生成一张完整海报/);
 assert.match(componentSource, /Object\.entries\(perspectiveLabels\)/);
 assert.doesNotMatch(componentSource, /每个视角生成一张完整海报/);
 assert.match(componentSource, /title: `\$\{item\.title\}海报`/);
+assert.match(componentSource, /clarity: settings\.clarity === "4K" \? "2K" : settings\.clarity/);
 
 const generateHandlerStart = componentSource.indexOf("async function handleGenerate");
 const posterCompositionPosition = componentSource.indexOf("await composeCabinetPoster", generateHandlerStart);
