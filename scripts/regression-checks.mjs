@@ -14,11 +14,15 @@ assert.match(promptSource, /不得生成裸体人物、人体假模型、人台�
 assert.doesNotMatch(promptSource, /人物不能遮挡柜体主要轮廓/);
 assert.match(promptSource, /第三张是未经 AI 改画的原始产品图，是产品外观的最高优先级依据/);
 assert.match(promptSource, /近景只展示原始产品中一个明确存在的局部/);
-assert.match(promptSource, /相机必须固定在柜体左前方约40至45度/);
+assert.match(promptSource, /相机可以位于柜体左前方或右前方约40至45度/);
 assert.doesNotMatch(promptSource, /50至55度/);
 assert.match(promptSource, /相机向柜体靠近/);
 assert.match(promptSource, /柜体主体约占纯场景画面横向宽度的80%至90%/);
-assert.match(promptSource, /必须同时清楚看到柜体正面和清楚可见的左侧板宽面/);
+assert.match(promptSource, /侧板可见性只能来自相机视差/);
+assert.match(promptSource, /柜体背板与墙面保持平行并完整贴墙/);
+assert.match(promptSource, /柜体正面长边、顶板长边和底座长边与墙脚线保持平行/);
+assert.match(promptSource, /左右两端到墙面的距离必须一致/);
+assert.match(promptSource, /placement: "保持已确认的靠墙位置/);
 assert.match(promptSource, /placementPlanForPerspective/);
 assert.match(promptSource, /candidates: \[\]/);
 assert.match(promptSource, /当前任务是参考重建，不是编辑原场景照片/);
@@ -64,6 +68,13 @@ assert.ok(
   "场景试摆和虚拟空间服务都必须只读取第一个视角"
 );
 assert.match(geminiSource, /const roomAsReference = perspective !== "wide"/);
+assert.doesNotMatch(
+  geminiSource,
+  /:\s*\{ roomImage, roomReferenceImages, beddingImage \}/,
+  "远景生成不得重复发送体积不可控的透明柜体前景"
+);
+assert.match(geminiSource, /:\s*\{ roomImage, roomReferenceImages \}/);
+assert.match(geminiSource, /response\.status === 413/);
 assert.match(geminiSource, /perspective === "medium" && wideConsistencyReference/);
 assert.match(geminiSource, /\[useWideScaleAnchor, roomImage, \.\.\.roomReferenceImages\]/);
 assert.match(geminiSource, /roomReferenceImages: referenceImages/);
@@ -73,7 +84,7 @@ assert.match(geminiSource, /wide-scale-anchor\.jpg",\s*192,\s*0\.55,\s*64 \* 102
 assert.match(promptSource, /低清尺度缩略图/);
 assert.match(promptSource, /远景尺度缩略图不是编辑底图，也不是产品结构依据/);
 assert.match(promptSource, /原始产品图是唯一高清产品结构依据/);
-assert.match(promptSource, /清楚可见的左侧板宽面/);
+assert.match(promptSource, /清楚看到正面和一侧侧板/);
 assert.doesNotMatch(promptSource, /相同的相机高度、焦距、拍摄距离和柜体垂直画面占比/);
 assert.match(geminiSource, /不得沿用原场景相机机位/);
 assert.match(geminiSource, /perspectives: \[perspective\]/);

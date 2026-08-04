@@ -417,7 +417,7 @@ export function CabinetPlacementTool() {
 
       const generateScenes = (activeSettings: PlacementSettings) => useVirtualRoom
         ? generateVirtualRoomImages(furnitureImage, analysis, activeSettings, platform.context, platform.prompt)
-        : generatePlacementImages(clearedRoomImage as UploadedImage, furnitureForegroundImage as UploadedImage, furnitureImage, [], analysis, activeSettings, platform.context, platform.prompt);
+        : generatePlacementImages(clearedRoomImage as UploadedImage, furnitureImage, [], analysis, activeSettings, platform.context, platform.prompt);
 
       let generationBatch = await generateScenes(generationSettings);
       let images = generationBatch.images;

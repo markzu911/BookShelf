@@ -166,7 +166,6 @@ function readableList(value: unknown, fallback: string[]): string[] {
 
 export async function generatePlacementImages(
   roomImage: UploadedImage,
-  beddingImage: UploadedImage,
   productReferenceImage: UploadedImage,
   roomReferenceImages: UploadedImage[],
   analysis: SceneAnalysis,
@@ -188,7 +187,7 @@ export async function generatePlacementImages(
       model: settings.model,
       ...(roomAsReference
         ? { roomReferenceImages: referenceImages }
-        : { roomImage, roomReferenceImages, beddingImage }),
+        : { roomImage, roomReferenceImages }),
       productReferenceImage,
       analysis,
       settings: singleViewSettings,
@@ -359,6 +358,10 @@ async function postGemini<T>(payload: GeminiGenerateRequest): Promise<T> {
     headers: { "Content-Type": "application/json" },
     body
   });
+
+  if (response.status === 413) {
+    throw new Error("上传给 AI 的参考图片数据过大，线上代理已拒绝请求。系统已减少远景请求中的重复图片，请刷新页面并重新上传素材后再试。");
+  }
 
   const contentType = response.headers.get("content-type") || "";
   if (!contentType.includes("application/json")) {
