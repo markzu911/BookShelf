@@ -189,7 +189,7 @@ export async function createFixedCameraViews(
   const outputHeight = Math.round(outputWidth / targetRatio);
 
   return perspectives.map((perspective) => {
-    const scale = perspective === "wide" ? 1 : perspective === "medium" ? 0.5 : 0.32;
+    const scale = perspective === "wide" ? 1 : perspective === "medium" ? 0.5 : 0.45;
     const baseWidth = Math.min(master.width, master.height * targetRatio);
     const baseHeight = baseWidth / targetRatio;
     const cropWidth = baseWidth * scale;

@@ -18,7 +18,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { defaultSettings, perspectiveLabels, TOOL_COST, TOOL_NAME, virtualRoomStyleLabels } from "./constants";
 import styles from "./CabinetPlacementTool.module.css";
 import { analyzeScene, analyzeVirtualFurniture, erasePlannedFurniture, extractFurnitureForeground, generatePlacementImages, generateVirtualRoomImages } from "./services/gemini";
-import { compressDataUrlToBlob, compressImage, GEMINI_IMAGE_TARGET_BYTES, GEMINI_PRODUCT_TARGET_BYTES } from "./services/image";
+import { compressDataUrlToBlob, compressImage, createFixedCameraViews, GEMINI_IMAGE_TARGET_BYTES, GEMINI_PRODUCT_TARGET_BYTES } from "./services/image";
 import { composeCabinetPoster } from "./services/poster";
 import {
   consumeIntegral,
@@ -416,7 +416,7 @@ export function CabinetPlacementTool() {
       let generationSettings: PlacementSettings = {
         ...settings,
         perspectives: [selectedPerspective],
-        clarity: settings.clarity === "4K" ? "2K" : settings.clarity
+        clarity: selectedPerspective === "close" ? "2K" : settings.clarity === "4K" ? "2K" : settings.clarity
       };
 
       const generateScenes = (activeSettings: PlacementSettings) => useVirtualRoom
@@ -428,6 +428,12 @@ export function CabinetPlacementTool() {
       let generationFailures = generationBatch.failures;
       if (!images.length) {
         throw new Error(generationFailures.map((failure) => `${failure.perspective}：${failure.message}`).join("；") || "所选视角未生成成功");
+      }
+      if (selectedPerspective === "close") {
+        const closeSource = images.find((image) => image.perspective === "close") || images[0];
+        const [closeView] = await createFixedCameraViews(closeSource.imageUrl, ["close"], generationSettings.ratio);
+        if (!closeView?.imageUrl) throw new Error("近景本地裁切失败");
+        images = [{ ...closeSource, imageUrl: closeView.imageUrl }];
       }
       generationSettings = { ...generationSettings, perspectives: images.map((image) => image.perspective) };
       setStatus("场景主图已生成，正在排版 3:4 家居海报...");
