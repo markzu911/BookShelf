@@ -4,6 +4,7 @@ import { removeConnectedStudioBackground } from "./backgroundMask";
 const MAX_INPUT_SIZE = 20 * 1024 * 1024;
 const MAX_EDGE = 1200;
 const JPEG_QUALITY = 0.72;
+const MAX_CLOSEUP_UPSCALE = 2;
 
 export const GEMINI_IMAGE_TARGET_BYTES = 420 * 1024;
 export const GEMINI_PRODUCT_TARGET_BYTES = 900 * 1024;
@@ -281,19 +282,30 @@ export async function createPixelLockedCloseupScene(
   ctx.fillStyle = veil;
   ctx.fillRect(0, 0, outputWidth, outputHeight);
 
-  const cropWidth = Math.max(1, bounds.width * 0.34);
-  const cropHeight = Math.max(1, bounds.height * 0.72);
+  const desiredDrawWidth = outputWidth * 0.58;
+  const desiredDrawHeight = outputHeight * 0.78;
+  const cropWidth = Math.min(
+    bounds.width,
+    Math.max(bounds.width * 0.42, desiredDrawWidth / MAX_CLOSEUP_UPSCALE)
+  );
+  const cropHeight = Math.min(
+    bounds.height,
+    Math.max(bounds.height * 0.72, desiredDrawHeight / MAX_CLOSEUP_UPSCALE)
+  );
   const focalX = bounds.x + bounds.width * 0.38;
   const focalY = bounds.y + bounds.height * 0.56;
   const sourceX = clamp(focalX - cropWidth / 2, bounds.x, bounds.x + bounds.width - cropWidth);
   const sourceY = clamp(focalY - cropHeight / 2, bounds.y, bounds.y + bounds.height - cropHeight);
-  const scale = Math.max(outputWidth * 0.92 / cropWidth, outputHeight * 0.9 / cropHeight);
+  const desiredScale = Math.min(desiredDrawWidth / cropWidth, desiredDrawHeight / cropHeight);
+  const scale = Math.min(MAX_CLOSEUP_UPSCALE, desiredScale);
   const drawWidth = cropWidth * scale;
   const drawHeight = cropHeight * scale;
   const drawX = (outputWidth - drawWidth) / 2;
   const drawY = (outputHeight - drawHeight) / 2;
 
   ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
   ctx.shadowColor = "rgba(24, 18, 13, 0.22)";
   ctx.shadowBlur = 20;
   ctx.shadowOffsetY = 10;
