@@ -11,7 +11,7 @@ import type {
   UploadedImage
 } from "../types";
 import { perspectiveLabels } from "../constants";
-import { buildAnalysisPrompt, buildGenerationPrompt, buildQualityPrompt, buildVirtualAnalysisPrompt, buildVirtualRoomPrompt } from "./prompt";
+import { buildAnalysisPrompt, buildCameraVariationPrompt, buildGenerationPrompt, buildQualityPrompt, buildVirtualAnalysisPrompt, buildVirtualRoomPrompt } from "./prompt";
 import { compressDataUrlToImage, preserveTransparentDataUrl, removeGeneratedStudioBackground } from "./image";
 import { resolvePlacementPlan } from "./placement";
 
@@ -175,49 +175,32 @@ export async function generatePlacementImages(
 ): Promise<PerspectiveGenerationBatch> {
   const requestedPerspective = settings.perspectives[0] || "wide";
   const requestedPerspectives: PerspectiveOption[] = [requestedPerspective];
-  let wideConsistencyReference: UploadedImage | null = null;
   return generatePerspectiveBatch(requestedPerspectives, async (perspective, singleViewSettings) => {
-    const roomAsReference = perspective !== "wide";
-    const useWideScaleAnchor = perspective === "medium" && wideConsistencyReference;
-    const referenceImages = useWideScaleAnchor
-      ? [useWideScaleAnchor, roomImage, ...roomReferenceImages]
-      : [roomImage, ...roomReferenceImages];
+    const perspectivePrompts: Record<string, string> = {
+      wide: buildGenerationPrompt(analysis, singleViewSettings, "wide", extraContext, extraPrompt)
+    };
+    if (perspective !== "wide") {
+      perspectivePrompts[perspective] = buildCameraVariationPrompt(
+        analysis,
+        singleViewSettings,
+        perspective,
+        extraContext,
+        extraPrompt
+      );
+    }
     const response = await postGemini<GeminiImageResponse>({
       mode: "generate",
       model: settings.model,
-      ...(roomAsReference
-        ? { roomReferenceImages: referenceImages }
-        : { roomImage, roomReferenceImages }),
+      roomImage,
+      roomReferenceImages,
       productReferenceImage,
       analysis,
       settings: singleViewSettings,
-      systemPrompt: roomAsReference
-        ? "只参考场景风格重新生成当前指定视角，不得沿用原场景相机机位。"
-        : "只生成当前指定视角的一张柜类试摆场景主图。",
-      perspectivePrompts: {
-        [perspective]: buildGenerationPrompt(
-          analysis,
-          singleViewSettings,
-          perspective,
-          extraContext,
-          extraPrompt,
-          roomAsReference,
-          Boolean(useWideScaleAnchor)
-        )
-      }
+      systemPrompt: perspective === "wide"
+        ? "只生成当前指定视角的一张柜类试摆场景主图。"
+        : "先生成锁定产品与摆位的隐藏远景主图，再基于同一主图完成用户选择的换镜头结果。",
+      perspectivePrompts
     });
-    if (perspective === "wide") {
-      const wideImage = response.images.find((image) => image.perspective === "wide") || response.images[0];
-      if (wideImage?.imageUrl) {
-        wideConsistencyReference = await compressDataUrlToImage(
-          wideImage.imageUrl,
-          "wide-scale-anchor.jpg",
-          192,
-          0.55,
-          64 * 1024
-        );
-      }
-    }
     return response.images;
   }, settings);
 }
@@ -232,16 +215,28 @@ export async function generateVirtualRoomImages(
   const requestedPerspective = settings.perspectives[0] || "wide";
   const requestedPerspectives: PerspectiveOption[] = [requestedPerspective];
   return generatePerspectiveBatch(requestedPerspectives, async (perspective, singleViewSettings) => {
+    const perspectivePrompts: Record<string, string> = {
+      wide: buildVirtualRoomPrompt(analysis, singleViewSettings, "wide", extraContext, extraPrompt)
+    };
+    if (perspective !== "wide") {
+      perspectivePrompts[perspective] = buildCameraVariationPrompt(
+        analysis,
+        singleViewSettings,
+        perspective,
+        extraContext,
+        extraPrompt
+      );
+    }
     const response = await postGemini<GeminiImageResponse>({
       mode: "generate",
       model: settings.model,
       beddingImage,
       analysis,
       settings: singleViewSettings,
-      systemPrompt: "只生成当前指定视角的一张虚拟家居场景主图。",
-      perspectivePrompts: {
-        [perspective]: buildVirtualRoomPrompt(analysis, singleViewSettings, perspective, extraContext, extraPrompt)
-      }
+      systemPrompt: perspective === "wide"
+        ? "只生成当前指定视角的一张虚拟家居场景主图。"
+        : "先生成锁定产品与摆位的隐藏远景主图，再基于同一主图完成用户选择的换镜头结果。",
+      perspectivePrompts
     });
     return response.images;
   }, settings);
