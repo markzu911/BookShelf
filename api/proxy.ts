@@ -30,6 +30,9 @@ interface GeminiPart {
 interface GeminiRequestBody {
   mode?: "analyze" | "cutout" | "erase" | "generate" | "quality";
   model?: string;
+  generationStage?: "direct" | "master" | "camera";
+  previousInteractionId?: string;
+  continuationModel?: string;
   roomImage?: { base64: string; mimeType: string };
   roomReferenceImages?: Array<{ base64: string; mimeType: string }>;
   beddingImage?: { base64: string; mimeType: string };
@@ -127,6 +130,8 @@ function createGenerationTrace(
   return {
     timestamp: new Date().toISOString(),
     perspective,
+    generationStage: body.generationStage || "legacy",
+    continuesInteraction: Boolean(body.previousInteractionId),
     api: usedApi,
     model: usedModel,
     durationMs,
@@ -213,7 +218,16 @@ async function handleGemini(req: JsonRequest, res: ServerResponse) {
   }
 
   if (body.mode === "generate") {
-    const images = await generateImagesWithInteractions(body, apiKey, model);
+    if (body.generationStage === "master") {
+      sendJson(res, 200, await generateMasterStage(body, apiKey, model));
+      return;
+    }
+    if (body.generationStage === "camera") {
+      const images = await generateCameraStage(body, apiKey, model);
+      sendJson(res, 200, images.length ? { success: true, images } : createMockGeminiResponse(body));
+      return;
+    }
+    const images = await generateDirectStage(body, apiKey, model);
     sendJson(res, 200, images.length ? { success: true, images } : createMockGeminiResponse(body));
     return;
   }
@@ -267,60 +281,71 @@ async function handleGemini(req: JsonRequest, res: ServerResponse) {
   sendJson(res, 200, parseGeneratedImages(data, body));
 }
 
-async function generateImagesWithInteractions(body: GeminiRequestBody, apiKey: string, model: string) {
+async function generateDirectStage(body: GeminiRequestBody, apiKey: string, model: string) {
   const requestedPerspective = body.settings?.perspectives?.[0] || "wide";
-  if (requestedPerspective === "wide") {
-    const startedAt = Date.now();
-    const { response, raw, model: usedModel, api: usedApi } = await requestImageWithFallback(body, apiKey, model, "wide");
-    if (!response.ok) {
-      throw toGeminiUpstreamError(response.status, raw, "Gemini 图片生成失败");
-    }
-    const generatedData = JSON.parse(raw);
-    const generatedImage = extractInteractionImage(generatedData) || extractGeneratedContentImage(generatedData);
-    if (!generatedImage) throw new Error("Gemini 未返回可用的摆放主图");
-    console.log("[image-generation-success]", createGenerationTrace(
-      body,
-      "wide",
-      usedModel,
-      usedApi,
-      Date.now() - startedAt,
-      generatedData as Record<string, unknown>
-    ));
-    return [{
-      perspective: "wide",
-      title: "远景（空间全景）",
-      imageUrl: `data:${generatedImage.mimeType};base64,${generatedImage.data}`
-    }];
-  }
+  const startedAt = Date.now();
+  const { response, raw, model: usedModel, api: usedApi } = await requestImageWithFallback(body, apiKey, model, requestedPerspective);
+  if (!response.ok) throw toGeminiUpstreamError(response.status, raw, "Gemini 图片生成失败");
+  const generatedData = JSON.parse(raw);
+  const generatedImage = extractInteractionImage(generatedData) || extractGeneratedContentImage(generatedData);
+  if (!generatedImage) throw new Error("Gemini 未返回可用的摆放主图");
+  console.log("[image-generation-success]", createGenerationTrace(
+    body,
+    requestedPerspective,
+    usedModel,
+    usedApi,
+    Date.now() - startedAt,
+    generatedData as Record<string, unknown>
+  ));
+  return [{
+    perspective: requestedPerspective,
+    title: requestedPerspective === "wide" ? "远景（空间全景）" : requestedPerspective === "medium" ? "侧面视角（柜体主体）" : "近景（柜体细节）",
+    imageUrl: `data:${generatedImage.mimeType};base64,${generatedImage.data}`
+  }];
+}
 
+async function generateMasterStage(body: GeminiRequestBody, apiKey: string, model: string) {
+  const masterBody: GeminiRequestBody = {
+    ...body,
+    settings: { ...body.settings, perspectives: ["wide"], clarity: "1K" }
+  };
   const masterStartedAt = Date.now();
-  const { response: masterResponse, raw: masterRaw, model: selectedModel, api: selectedApi } = await requestImageWithFallback(body, apiKey, model, "wide");
+  const { response: masterResponse, raw: masterRaw, model: selectedModel, api: selectedApi } = await requestImageWithFallback(masterBody, apiKey, model, "wide");
   if (!masterResponse.ok) throw toGeminiUpstreamError(masterResponse.status, masterRaw, "Gemini 隐藏远景主图生成失败");
   const masterData = JSON.parse(masterRaw);
   const masterImage = extractInteractionImage(masterData) || extractGeneratedContentImage(masterData);
   if (!masterImage) throw new Error("Gemini 未返回可用于换镜头的远景主图");
   const interactionIdValue = asRecord(masterData).id;
   const interactionId = typeof interactionIdValue === "string" ? interactionIdValue : "";
-  const canContinueInteraction = selectedApi === "interactions" && Boolean(interactionId);
   console.log("[image-generation-master]", createGenerationTrace(
-    body,
+    masterBody,
     "wide",
     selectedModel,
     selectedApi,
     Date.now() - masterStartedAt,
     masterData as Record<string, unknown>
   ));
-
-  const variationBody: GeminiRequestBody = {
-    ...body,
-    roomImage: { base64: masterImage.data, mimeType: masterImage.mimeType },
-    roomReferenceImages: []
+  return {
+    success: true,
+    interactionId: selectedApi === "interactions" ? interactionId : "",
+    continuationModel: selectedModel,
+    masterImage: { base64: masterImage.data, mimeType: masterImage.mimeType }
   };
+}
+
+async function generateCameraStage(body: GeminiRequestBody, apiKey: string, model: string) {
+  const requestedPerspective = body.settings?.perspectives?.[0] || "medium";
+  if (requestedPerspective === "wide") return generateDirectStage(body, apiKey, model);
+  const selectedModel = resolveContinuationModel(body.continuationModel, model);
   const variationStartedAt = Date.now();
-  const variationResponse = canContinueInteraction
-    ? await requestImageInteraction(variationBody, apiKey, selectedModel, requestedPerspective, interactionId)
-    : await requestImageGenerateContent(variationBody, apiKey, selectedModel, requestedPerspective);
-  const variationRaw = await variationResponse.text();
+  let variationResponse = body.previousInteractionId
+    ? await requestImageInteraction(body, apiKey, selectedModel, requestedPerspective, body.previousInteractionId)
+    : await requestImageGenerateContent(body, apiKey, selectedModel, requestedPerspective);
+  let variationRaw = await variationResponse.text();
+  if (!variationResponse.ok && body.previousInteractionId && shouldTryGenerateContent(variationResponse.status, variationRaw)) {
+    variationResponse = await requestImageGenerateContent(body, apiKey, selectedModel, requestedPerspective);
+    variationRaw = await variationResponse.text();
+  }
   if (!variationResponse.ok) {
     throw toGeminiUpstreamError(variationResponse.status, variationRaw, `${requestedPerspective} 视角生成失败，请稍后重试`);
   }
@@ -328,10 +353,10 @@ async function generateImagesWithInteractions(body: GeminiRequestBody, apiKey: s
   const variationImage = extractInteractionImage(variationData) || extractGeneratedContentImage(variationData);
   if (!variationImage) throw new Error(`Gemini 未返回 ${requestedPerspective} 视角图片`);
   console.log("[image-generation-success]", createGenerationTrace(
-    variationBody,
+    body,
     requestedPerspective,
     selectedModel,
-    canContinueInteraction ? "interactions-continuation" : "generateContent",
+    body.previousInteractionId ? "interactions-continuation" : "generateContent",
     Date.now() - variationStartedAt,
     variationData as Record<string, unknown>
   ));
@@ -340,6 +365,16 @@ async function generateImagesWithInteractions(body: GeminiRequestBody, apiKey: s
     title: requestedPerspective === "medium" ? "侧面视角（柜体主体）" : "近景（柜体细节）",
     imageUrl: `data:${variationImage.mimeType};base64,${variationImage.data}`
   }];
+}
+
+function resolveContinuationModel(requestedModel: string | undefined, fallbackModel: string) {
+  const allowedModels = new Set([
+    fallbackModel,
+    process.env.GEMINI_IMAGE_MODEL,
+    process.env.GEMINI_IMAGE_MODEL_3,
+    process.env.GEMINI_IMAGE_MODEL_FALLBACK
+  ].filter((value): value is string => Boolean(value)));
+  return requestedModel && allowedModels.has(requestedModel) ? requestedModel : fallbackModel;
 }
 
 async function requestImageWithFallback(body: GeminiRequestBody, apiKey: string, model: string, perspective: string) {
@@ -398,15 +433,21 @@ function requestImageGenerateContent(body: GeminiRequestBody, apiKey: string, mo
   const parts: GeminiPart[] = [{ text: prompt }];
   const beddingImage = getBeddingImage(body);
   if (body.roomImage?.base64) {
+    parts.push({ text: "以下图片是场景与现实摆位参考，不作为产品结构依据。" });
     parts.push({ inlineData: { mimeType: body.roomImage.mimeType || "image/jpeg", data: body.roomImage.base64 } });
+  }
+  if ((body.roomReferenceImages || []).some((image) => image.base64)) {
+    parts.push({ text: "以下补充图片只参考装修风格、材质、采光和空间氛围，不作为产品结构依据。" });
   }
   for (const image of body.roomReferenceImages || []) {
     if (image.base64) parts.push({ inlineData: { mimeType: image.mimeType || "image/jpeg", data: image.base64 } });
   }
   if (beddingImage?.base64) {
+    parts.push({ text: "以下图片是唯一产品结构依据。逐项锁定可见模块、柜门、抽屉、层板、开放格、比例、颜色和材质。" });
     parts.push({ inlineData: { mimeType: beddingImage.mimeType || "image/jpeg", data: beddingImage.base64 } });
   }
   if (body.productReferenceImage?.base64) {
+    parts.push({ text: "以下图片是唯一产品结构依据。逐项锁定可见模块、柜门、抽屉、层板、开放格、比例、颜色和材质。" });
     parts.push({ inlineData: { mimeType: body.productReferenceImage.mimeType || "image/jpeg", data: body.productReferenceImage.base64 } });
   }
   return fetchWithDiagnostics(`generateContent:${model}:${perspective}`, `https://generativelanguage.googleapis.com/v1/models/${encodeURIComponent(model)}:generateContent`, {
@@ -445,16 +486,33 @@ function requestImageInteraction(body: GeminiRequestBody, apiKey: string, model:
     : previousInteractionId
       ? [
           { type: "text", text: `${prompt}\n\n这是主图受限相机变换，不是新场景生成。只生成指定镜头：${perspective}。请直接输出最终效果图。` },
-          ...(body.roomImage?.base64 ? [{ type: "image", mime_type: body.roomImage.mimeType || "image/jpeg", data: body.roomImage.base64 }] : []),
-          ...(beddingImage?.base64 ? [{ type: "image", mime_type: beddingImage.mimeType || "image/jpeg", data: beddingImage.base64 }] : []),
-          ...(body.productReferenceImage?.base64 ? [{ type: "image", mime_type: body.productReferenceImage.mimeType || "image/jpeg", data: body.productReferenceImage.base64 }] : [])
+          ...(beddingImage?.base64 ? [
+            { type: "text", text: "以下图片是唯一产品结构依据。上一轮远景不作为产品结构依据。" },
+            { type: "image", mime_type: beddingImage.mimeType || "image/jpeg", data: beddingImage.base64 }
+          ] : []),
+          ...(body.productReferenceImage?.base64 ? [
+            { type: "text", text: "以下图片是唯一产品结构依据。上一轮远景不作为产品结构依据。" },
+            { type: "image", mime_type: body.productReferenceImage.mimeType || "image/jpeg", data: body.productReferenceImage.base64 }
+          ] : [])
         ]
       : [
-          { type: "text", text: `${prompt}\n\n请先生成锁定布局的远景主图。` },
-          ...(body.roomImage?.base64 ? [{ type: "image", mime_type: body.roomImage.mimeType || "image/jpeg", data: body.roomImage.base64 }] : []),
-          ...((body.roomReferenceImages || []).filter((image) => image.base64).map((image) => ({ type: "image", mime_type: image.mimeType || "image/jpeg", data: image.base64 }))),
-          ...(beddingImage?.base64 ? [{ type: "image", mime_type: beddingImage.mimeType || "image/jpeg", data: beddingImage.base64 }] : []),
-          ...(body.productReferenceImage?.base64 ? [{ type: "image", mime_type: body.productReferenceImage.mimeType || "image/jpeg", data: body.productReferenceImage.base64 }] : [])
+          { type: "text", text: `${prompt}\n\n只生成当前阶段指定的一张图片。` },
+          ...(body.roomImage?.base64 ? [
+            { type: "text", text: "以下图片是场景与现实摆位参考，不作为产品结构依据。" },
+            { type: "image", mime_type: body.roomImage.mimeType || "image/jpeg", data: body.roomImage.base64 }
+          ] : []),
+          ...((body.roomReferenceImages || []).filter((image) => image.base64).flatMap((image) => [
+            { type: "text", text: "以下图片只参考装修风格与空间氛围，不作为产品结构依据。" },
+            { type: "image", mime_type: image.mimeType || "image/jpeg", data: image.base64 }
+          ])),
+          ...(beddingImage?.base64 ? [
+            { type: "text", text: "以下图片是唯一产品结构依据。" },
+            { type: "image", mime_type: beddingImage.mimeType || "image/jpeg", data: beddingImage.base64 }
+          ] : []),
+          ...(body.productReferenceImage?.base64 ? [
+            { type: "text", text: "以下图片是唯一产品结构依据。" },
+            { type: "image", mime_type: body.productReferenceImage.mimeType || "image/jpeg", data: body.productReferenceImage.base64 }
+          ] : [])
         ];
   return fetchWithDiagnostics(`interactions:${model}:${perspective}:${previousInteractionId ? "variation" : "master"}`, "https://generativelanguage.googleapis.com/v1beta/interactions", {
     method: "POST",

@@ -1,6 +1,7 @@
 import type {
   GeminiAnalyzeResponse,
   GeminiImageResponse,
+  GeminiMasterResponse,
   GeminiGenerateRequest,
   GeminiQualityResponse,
   GenerationQualityCheck,
@@ -188,18 +189,46 @@ export async function generatePlacementImages(
         extraPrompt
       );
     }
-    const response = await postGemini<GeminiImageResponse>({
+    if (perspective === "wide") {
+      const response = await postGemini<GeminiImageResponse>({
+        mode: "generate",
+        generationStage: "direct",
+        model: settings.model,
+        roomImage,
+        roomReferenceImages,
+        productReferenceImage,
+        analysis,
+        settings: singleViewSettings,
+        systemPrompt: "只生成当前指定视角的一张柜类试摆场景主图。",
+        perspectivePrompts
+      });
+      return response.images;
+    }
+
+    const masterResponse = await postGemini<GeminiMasterResponse>({
       mode: "generate",
+      generationStage: "master",
       model: settings.model,
       roomImage,
       roomReferenceImages,
       productReferenceImage,
       analysis,
+      settings: { ...singleViewSettings, perspectives: ["wide"], clarity: "1K" },
+      systemPrompt: "生成一张低清隐藏远景，只用于锁定现实场景与柜体贴墙落地摆位。",
+      perspectivePrompts: { wide: perspectivePrompts.wide }
+    });
+    const response = await postGemini<GeminiImageResponse>({
+      mode: "generate",
+      generationStage: "camera",
+      previousInteractionId: masterResponse.interactionId,
+      continuationModel: masterResponse.continuationModel,
+      model: settings.model,
+      roomImage: masterResponse.masterImage,
+      productReferenceImage,
+      analysis,
       settings: singleViewSettings,
-      systemPrompt: perspective === "wide"
-        ? "只生成当前指定视角的一张柜类试摆场景主图。"
-        : "先生成锁定产品与摆位的隐藏远景主图，再基于同一主图完成用户选择的换镜头结果。",
-      perspectivePrompts
+      systemPrompt: "只在同一现实摆位中移动相机，输出用户选择的最终视角。",
+      perspectivePrompts: { [perspective]: perspectivePrompts[perspective] }
     });
     return response.images;
   }, settings);
@@ -227,16 +256,42 @@ export async function generateVirtualRoomImages(
         extraPrompt
       );
     }
-    const response = await postGemini<GeminiImageResponse>({
+    if (perspective === "wide") {
+      const response = await postGemini<GeminiImageResponse>({
+        mode: "generate",
+        generationStage: "direct",
+        model: settings.model,
+        beddingImage,
+        analysis,
+        settings: singleViewSettings,
+        systemPrompt: "只生成当前指定视角的一张虚拟家居场景主图。",
+        perspectivePrompts
+      });
+      return response.images;
+    }
+
+    const masterResponse = await postGemini<GeminiMasterResponse>({
       mode: "generate",
+      generationStage: "master",
       model: settings.model,
       beddingImage,
       analysis,
+      settings: { ...singleViewSettings, perspectives: ["wide"], clarity: "1K" },
+      systemPrompt: "生成一张低清隐藏远景，只用于锁定虚拟场景与柜体贴墙落地摆位。",
+      perspectivePrompts: { wide: perspectivePrompts.wide }
+    });
+    const response = await postGemini<GeminiImageResponse>({
+      mode: "generate",
+      generationStage: "camera",
+      previousInteractionId: masterResponse.interactionId,
+      continuationModel: masterResponse.continuationModel,
+      model: settings.model,
+      roomImage: masterResponse.masterImage,
+      beddingImage,
+      analysis,
       settings: singleViewSettings,
-      systemPrompt: perspective === "wide"
-        ? "只生成当前指定视角的一张虚拟家居场景主图。"
-        : "先生成锁定产品与摆位的隐藏远景主图，再基于同一主图完成用户选择的换镜头结果。",
-      perspectivePrompts
+      systemPrompt: "只在同一现实摆位中移动相机，输出用户选择的最终视角。",
+      perspectivePrompts: { [perspective]: perspectivePrompts[perspective] }
     });
     return response.images;
   }, settings);
@@ -348,11 +403,27 @@ async function postGemini<T>(payload: GeminiGenerateRequest): Promise<T> {
   if (bodySize > 3.5 * 1024 * 1024) {
     throw new Error("请求图片体积仍然过大，可能被服务端拒绝。请减少补充角度图片，或上传分辨率更低的场景/柜体图后重试。");
   }
-  const response = await fetch("/api/gemini", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body
-  });
+  const retryableStatuses = new Set([429, 500, 502, 503, 504]);
+  let response: Response | undefined;
+  let lastNetworkError: unknown;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      response = await fetch("/api/gemini", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body
+      });
+      if (!retryableStatuses.has(response.status) || attempt === 1) break;
+    } catch (error) {
+      lastNetworkError = error;
+      if (attempt === 1) throw error;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 900));
+  }
+
+  if (!response) {
+    throw lastNetworkError instanceof Error ? lastNetworkError : new Error("Gemini 接口暂时无法连接");
+  }
 
   if (response.status === 413) {
     throw new Error("上传给 AI 的参考图片数据过大，线上代理已拒绝请求。系统已减少远景请求中的重复图片，请刷新页面并重新上传素材后再试。");

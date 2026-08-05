@@ -7,6 +7,7 @@ const constantsSource = await readFile(new URL("../src/constants.ts", import.met
 const geminiSource = await readFile(new URL("../src/services/gemini.ts", import.meta.url), "utf8");
 const proxySource = await readFile(new URL("../api/proxy.ts", import.meta.url), "utf8");
 const localServerSource = await readFile(new URL("../scripts/local-trial-server.mjs", import.meta.url), "utf8");
+const typesSource = await readFile(new URL("../src/types.ts", import.meta.url), "utf8");
 
 assert.match(promptSource, /真实真人/);
 assert.match(promptSource, /衣着完整/);
@@ -15,11 +16,15 @@ assert.doesNotMatch(promptSource, /人物不能遮挡柜体主要轮廓/);
 assert.match(promptSource, /最后一张是未经 AI 改画的原始产品图，是产品外观的最高优先级依据/);
 assert.match(promptSource, /近景只展示原始产品中一个明确存在的局部/);
 assert.match(promptSource, /柜体整体约 8% 到 18% 的真实局部/);
-assert.match(promptSource, /向左前方或右前方横移 25 到 40 度/);
-assert.match(promptSource, /允许只展示柜体约 55% 到 75%/);
+assert.match(promptSource, /左前方或右前方约 45 度/);
+assert.match(promptSource, /只展示柜体约 50% 到 70%/);
 assert.match(promptSource, /侧板可见性只能来自相机视差/);
 assert.match(promptSource, /柜体背板与墙面保持平行并完整贴墙/);
-assert.match(promptSource, /柜体自身保持背面贴墙且不旋转/);
+assert.match(promptSource, /柜体自身的偏航、俯仰和翻滚角始终为零/);
+assert.match(promptSource, /近侧侧板的投影宽度约占柜体可见投影总宽度的 12% 到 20%/);
+assert.match(promptSource, /允许柜体在新画面中的二维位置、投影大小和遮挡关系随相机自然变化/);
+assert.match(promptSource, /唯一产品结构依据/);
+assert.doesNotMatch(promptSource, /原始产品图及主图一致/);
 assert.match(promptSource, /placement: "保持已确认的靠墙位置/);
 assert.match(promptSource, /placementPlanForPerspective/);
 assert.match(promptSource, /candidates: \[\]/);
@@ -43,12 +48,19 @@ assert.ok(
 );
 assert.match(proxySource, /Array\.isArray\(parsed\) \? parsed\[0\] : parsed/);
 assert.match(localServerSource, /Array\.isArray\(parsed\) \? parsed\[0\] : parsed/);
-assert.match(proxySource, /const requestedPerspective = body\.settings\?\.perspectives\?\.\[0\] \|\| "wide"/);
-assert.match(localServerSource, /const requestedPerspective = body\.settings\?\.perspectives\?\.\[0\] \|\| "wide"/);
-assert.match(proxySource, /requestImageWithFallback\(body, apiKey, model, "wide"\)/);
-assert.match(localServerSource, /requestImageWithFallback\(body, apiKey, model, "wide"\)/);
-assert.match(proxySource, /requestImageInteraction\(variationBody, apiKey, selectedModel, requestedPerspective, interactionId\)/);
-assert.match(localServerSource, /requestImageInteraction\(variationBody, apiKey, selectedModel, requestedPerspective, interactionId\)/);
+assert.match(typesSource, /generationStage\?: "direct" \| "master" \| "camera"/);
+assert.match(typesSource, /previousInteractionId\?: string/);
+assert.match(typesSource, /interface GeminiMasterResponse/);
+assert.match(proxySource, /body\.generationStage === "master"/);
+assert.match(proxySource, /body\.generationStage === "camera"/);
+assert.match(localServerSource, /body\.generationStage === "master"/);
+assert.match(localServerSource, /body\.generationStage === "camera"/);
+assert.match(proxySource, /generateMasterStage/);
+assert.match(proxySource, /generateCameraStage/);
+assert.match(localServerSource, /generateMasterStage/);
+assert.match(localServerSource, /generateCameraStage/);
+assert.doesNotMatch(proxySource, /async function generateImagesWithInteractions/);
+assert.doesNotMatch(localServerSource, /async function generateImagesWithInteractions/);
 assert.match(proxySource, /model: usedModel, api: usedApi/);
 assert.match(localServerSource, /model: usedModel, api: usedApi/);
 assert.match(proxySource, /\[image-generation-success\]/);
@@ -58,14 +70,19 @@ assert.match(proxySource, /promptFingerprint/);
 assert.match(localServerSource, /promptFingerprint/);
 assert.match(proxySource, /productReference: Boolean\(body\.productReferenceImage\?\.base64\)/);
 assert.match(localServerSource, /productReference: Boolean\(body\.productReferenceImage\?\.base64\)/);
-assert.match(proxySource, /请先生成锁定布局的远景主图/);
-assert.match(localServerSource, /请先生成锁定布局的远景主图/);
+assert.match(proxySource, /以下图片是唯一产品结构依据/);
+assert.match(localServerSource, /以下图片是唯一产品结构依据/);
 assert.match(geminiSource, /async function generatePerspectiveBatch/);
 assert.ok(
   (geminiSource.match(/const requestedPerspective = settings\.perspectives\[0\] \|\| "wide"/g) || []).length >= 2,
   "场景试摆和虚拟空间服务都必须只读取第一个视角"
 );
 assert.match(geminiSource, /buildCameraVariationPrompt/);
+assert.match(geminiSource, /generationStage: "master"/);
+assert.match(geminiSource, /generationStage: "camera"/);
+assert.match(geminiSource, /clarity: "1K"/);
+assert.match(geminiSource, /previousInteractionId: masterResponse\.interactionId/);
+assert.match(geminiSource, /const retryableStatuses = new Set\(\[429, 500, 502, 503, 504\]\)/);
 assert.doesNotMatch(
   geminiSource,
   /:\s*\{ roomImage, roomReferenceImages, beddingImage \}/,
@@ -76,9 +93,9 @@ assert.match(geminiSource, /response\.status === 413/);
 assert.doesNotMatch(geminiSource, /wideConsistencyReference/);
 assert.match(geminiSource, /wide: buildGenerationPrompt/);
 assert.match(geminiSource, /perspectivePrompts\[perspective\] = buildCameraVariationPrompt/);
-assert.match(promptSource, /这是同一摆放方案的换镜头任务/);
-assert.match(promptSource, /绝对禁止改变主图中的柜体位置、朝向、大小、款式/);
-assert.match(promptSource, /原始产品图仍是产品结构的最高优先级依据/);
+assert.match(promptSource, /这是同一现实摆放方案的换相机任务/);
+assert.match(promptSource, /上一轮远景只负责锁定场景与现实摆位/);
+assert.match(promptSource, /禁止旋转、斜摆、平移、抬高、压低或拉伸柜体/);
 assert.match(promptSource, /清楚看到正面和一侧侧板/);
 assert.doesNotMatch(promptSource, /相同的相机高度、焦距、拍摄距离和柜体垂直画面占比/);
 assert.match(geminiSource, /perspectives: \[perspective\]/);
