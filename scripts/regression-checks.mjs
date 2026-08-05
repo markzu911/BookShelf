@@ -18,6 +18,8 @@ assert.match(promptSource, /侧面空场景重建/);
 assert.match(promptSource, /画面中不得出现任何书柜、斗柜、组合柜或柜类产品/);
 assert.match(promptSource, /viewpoint/);
 assert.match(promptSource, /sideDirectionForProduct/);
+assert.match(promptSource, /最后一张产品图仅用于匹配相机方向和透视强度/);
+assert.match(promptSource, /不得用侧墙或房间转角冒充侧面视角/);
 assert.match(promptSource, /相机可以位于柜体左前方或右前方约40至45度/);
 assert.doesNotMatch(promptSource, /50至55度/);
 assert.match(promptSource, /相机向柜体靠近/);
@@ -71,6 +73,7 @@ assert.match(geminiSource, /perspective === "medium"/);
 assert.match(geminiSource, /createLockedProductForeground\(productReferenceImage\)/);
 assert.match(geminiSource, /composeLockedProductScene\(/);
 assert.match(geminiSource, /buildLockedSideScenePrompt/);
+assert.match(geminiSource, /productReferenceImage: productPerspectiveGuide/);
 assert.match(geminiSource, /viewpoint: readableText/);
 assert.ok(
   (geminiSource.match(/const requestedPerspective = settings\.perspectives\[0\] \|\| "wide"/g) || []).length >= 2,

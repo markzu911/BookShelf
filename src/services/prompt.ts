@@ -104,9 +104,12 @@ export function buildLockedSideScenePrompt(
   extraPrompt: string[] = []
 ): string {
   const sideDirection = sideDirectionForProduct(analysis);
+  const sideGeometry = sideSceneGeometryForProduct(sideDirection);
   return [
-    "这是侧面空场景重建任务。输入图只用于确认同一个房间的装修、主要家具、墙地关系、色彩与采光，不用于生成柜体。",
-    `产品原图拍摄方向为“${analysis.furnitureIdentity.viewpoint}”。将场景相机移动到目标墙面的${sideDirection}约30至40度，镜头对准目标墙面中心，使背景透视方向与产品原图一致。通过墙脚线、地板和天花线产生清楚的侧向纵深，不能返回正面平视、相反方向或近似正交投影。`,
+    "这是侧面空场景重建任务。前面的图片用于确认同一个房间的装修、主要家具、墙地关系、色彩与采光；最后一张产品图仅用于匹配相机方向和透视强度，不用于生成柜体。",
+    `产品原图拍摄方向为“${analysis.furnitureIdentity.viewpoint}”。${sideGeometry}相机角度必须跟随最后一张产品参考图的真实透视，不得擅自放大或反转角度。`,
+    "目标安装墙本身必须呈现与产品正面完全一致的斜向透视；不得用侧墙或房间转角冒充侧面视角，同时让目标安装墙仍保持正面平视。柜体背面后续会与目标墙面重合，必须让墙脚线、地板线和天花线与产品图的水平边沿朝同一个消失点收敛。",
+    "柜体最终必须背面贴墙、两端到墙距离一致，绝不能表现为柜体自身旋转、某一端离墙或斜着摆放。侧面效果只能来自相机位置变化。",
     "保持为同一个房间：保留原场景的门窗、梁柱、墙地材质、窗帘、沙发、茶几、灯具、植物和主要家具关系；相机移动后新露出的少量区域按原装修自然补全，不得随机更换房型或装修风格。",
     "目标墙面中央必须预留连续、干净、贴墙落地的柜体安装区域，约占画面横向宽度的86%和纵向高度的78%。该区域不要放人物、沙发、桌椅、植物、灯具、墙画或其他遮挡物。",
     "画面中不得出现任何书柜、斗柜、组合柜或柜类产品，也不得出现柜体轮廓、柜门、抽屉、层板、开放格或相似家具；应用会在生成后把用户上传的原始产品像素合成到预留区域。",
@@ -132,9 +135,12 @@ export function buildLockedVirtualSideScenePrompt(
 ): string {
   const styleLabel = virtualRoomStyleLabels[settings.virtualRoomStyle];
   const sideDirection = sideDirectionForProduct(analysis);
+  const sideGeometry = sideSceneGeometryForProduct(sideDirection);
   return [
-    "这是侧面空场景重建任务。只生成用于后续产品像素合成的空家居背景，不生成任何柜类产品。",
-    `生成一个真实完整的${styleLabel}客厅、书房或家庭阅读区。产品原图拍摄方向为“${analysis.furnitureIdentity.viewpoint}”，相机位于目标墙面的${sideDirection}约30至40度，镜头对准墙面中心，使背景透视方向与产品原图一致；墙脚线、地板和天花线必须呈现明确的侧向纵深。`,
+    "这是侧面空场景重建任务。只生成用于后续产品像素合成的空家居背景，不生成任何柜类产品；最后一张产品图仅用于匹配相机方向和透视强度。",
+    `生成一个真实完整的${styleLabel}客厅、书房或家庭阅读区。产品原图拍摄方向为“${analysis.furnitureIdentity.viewpoint}”。${sideGeometry}相机角度必须跟随最后一张产品参考图的真实透视，不得擅自放大或反转角度。`,
+    "目标安装墙本身必须呈现与产品正面完全一致的斜向透视；不得用侧墙或房间转角冒充侧面视角，同时让目标安装墙仍保持正面平视。墙脚线、地板线和天花线必须与产品图的水平边沿朝同一个消失点收敛。",
+    "柜体后续会背面贴墙、两端到墙距离一致；背景不得暗示柜体自身旋转、某一端离墙或斜着摆放。侧面效果只能来自相机位置变化。",
     "目标墙面中央预留连续、干净、贴墙落地的柜体安装区域，约占画面横向宽度的86%和纵向高度的78%；预留区域内不得放置任何家具、人物、植物、灯具或墙画。",
     "画面中不得出现任何书柜、斗柜、组合柜或柜类产品，也不得出现柜门、抽屉、层板、开放格或相似家具。",
     "只输出没有文字、价格、Logo、水印、边框或海报排版的真实家居空场景。",
@@ -153,6 +159,12 @@ function sideDirectionForProduct(analysis: SceneAnalysis): "左前方" | "右前
   const viewpoint = analysis.furnitureIdentity.viewpoint;
   if (/左前|左侧板|左侧可见/.test(viewpoint) && !/右前|右侧板|右侧可见/.test(viewpoint)) return "左前方";
   return "右前方";
+}
+
+function sideSceneGeometryForProduct(direction: "左前方" | "右前方"): string {
+  return direction === "左前方"
+    ? "产品左侧板可见，因此相机位于柜体左前方：目标安装墙左端更近、右端更远，墙面水平线向画面右侧消失点收敛。"
+    : "产品右侧板可见，因此相机位于柜体右前方：目标安装墙右端更近、左端更远，墙面水平线向画面左侧消失点收敛。";
 }
 
 export function buildGenerationPrompt(

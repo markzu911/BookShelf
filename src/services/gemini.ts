@@ -194,10 +194,18 @@ export async function generatePlacementImages(
   return generatePerspectiveBatch(requestedPerspectives, async (perspective, singleViewSettings) => {
     if (perspective === "medium") {
       const lockedProduct = lockedProductForeground || await createLockedProductForeground(productReferenceImage);
+      const productPerspectiveGuide = await compressDataUrlToImage(
+        productReferenceImage.dataUrl,
+        "product-perspective-guide.jpg",
+        420,
+        0.72,
+        120 * 1024
+      );
       const sceneResponse = await postGemini<GeminiImageResponse>({
         mode: "generate",
         model: settings.model,
         roomReferenceImages: [roomImage, ...roomReferenceImages],
+        productReferenceImage: productPerspectiveGuide,
         analysis,
         settings: singleViewSettings,
         systemPrompt: "只重建与产品原图方向一致的侧前方空场景，不得生成任何柜类产品。",
@@ -258,9 +266,17 @@ export async function generateVirtualRoomImages(
   return generatePerspectiveBatch(requestedPerspectives, async (perspective, singleViewSettings) => {
     if (perspective === "medium") {
       const lockedProduct = lockedProductForeground || await createLockedProductForeground(beddingImage);
+      const productPerspectiveGuide = await compressDataUrlToImage(
+        beddingImage.dataUrl,
+        "product-perspective-guide.jpg",
+        420,
+        0.72,
+        120 * 1024
+      );
       const sceneResponse = await postGemini<GeminiImageResponse>({
         mode: "generate",
         model: settings.model,
+        productReferenceImage: productPerspectiveGuide,
         analysis,
         settings: singleViewSettings,
         systemPrompt: "只生成与产品原图方向一致的侧前方虚拟家居空场景，不得生成任何柜类产品。",
