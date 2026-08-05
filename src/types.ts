@@ -71,7 +71,6 @@ export interface FurnitureIdentity {
   shelves: string;
   material: string;
   color: string;
-  viewpoint: string;
   details: string[];
 }
 

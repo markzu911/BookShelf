@@ -63,38 +63,6 @@ export function removeConnectedStudioBackground(
     }
   }
 
-  const hasBrightNeutralBackdrop = backgroundPalette.some((color) => {
-    const maximum = Math.max(color.red, color.green, color.blue);
-    const minimum = Math.min(color.red, color.green, color.blue);
-    return maximum - minimum <= 26 && (color.red + color.green + color.blue) / 3 >= 185;
-  });
-  if (hasBrightNeutralBackdrop) {
-    // A white studio backdrop often leaves a detached-looking gray floor
-    // shadow. It is still connected to the already identified background,
-    // so expand only through neutral mid/light pixels. Enclosed white books
-    // and hardware remain protected by the cabinet's dark boundaries.
-    head = 0;
-    while (head < tail) {
-      const index = queue[head];
-      head += 1;
-      const x = index % width;
-      const y = Math.floor(index / width);
-      const neighbors = [
-        x > 0 ? index - 1 : -1,
-        x + 1 < width ? index + 1 : -1,
-        y > 0 ? index - width : -1,
-        y + 1 < height ? index + width : -1
-      ];
-      for (const neighbor of neighbors) {
-        if (neighbor >= 0 && !visited[neighbor] && isNeutralStudioResidue(pixels, neighbor)) {
-          visited[neighbor] = 1;
-          queue[tail] = neighbor;
-          tail += 1;
-        }
-      }
-    }
-  }
-
   let opaquePixels = 0;
   for (let index = 0; index < width * height; index += 1) {
     const offset = index * 4;
@@ -112,17 +80,6 @@ export function removeConnectedStudioBackground(
     transparentEdgeRatio: transparentEdges / edgeIndexes.length,
     opaquePixelRatio: opaquePixels / (width * height)
   };
-}
-
-function isNeutralStudioResidue(pixels: Uint8ClampedArray, index: number): boolean {
-  const offset = index * 4;
-  if (pixels[offset + 3] <= 16) return true;
-  const red = pixels[offset];
-  const green = pixels[offset + 1];
-  const blue = pixels[offset + 2];
-  const maximum = Math.max(red, green, blue);
-  const minimum = Math.min(red, green, blue);
-  return maximum - minimum <= 38 && (red + green + blue) / 3 >= 138;
 }
 
 function createEdgePalette(pixels: Uint8ClampedArray, edgeIndexes: number[]): Color[] {
