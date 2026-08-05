@@ -327,7 +327,7 @@ function getBeddingImage(body) {
 
 function finalProductLockInstruction(perspective) {
   const closeRule = perspective === "close"
-    ? "近景只能从这张图中清晰可见的一个连续区域做裁取和放大；不得推测不可见结构、重绘产品或生成相似细节。"
+    ? "近景只展示柜体整体约 15% 到 25% 的一个连续局部，至少保留一个完整可识别的结构单元；柜体仍正常靠墙落地且方向不变，只移动相机靠近取景。只能选择这张图中清晰可见的区域，不得推测不可见结构、重绘产品或生成相似细节。"
     : "所有可见产品结构、模块、比例、颜色、材质与细节都必须以这张图为准，不得重设计或生成相似款。";
   return `刚刚这张未经 AI 改画的原始产品图是产品事实源。${closeRule}`;
 }

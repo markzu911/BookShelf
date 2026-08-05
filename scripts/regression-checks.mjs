@@ -17,7 +17,10 @@ assert.match(promptSource, /不得生成裸体人物、人体假模型、人台�
 assert.doesNotMatch(promptSource, /人物不能遮挡柜体主要轮廓/);
 assert.match(promptSource, /最后一张是未经 AI 改画的原始产品图，是产品外观的最高优先级依据/);
 assert.match(promptSource, /近景只展示原始产品中一个明确存在的局部/);
-assert.match(promptSource, /柜体整体约 8% 到 18% 的真实局部/);
+assert.match(promptSource, /近景沿用远景与侧面的正常摆放逻辑/);
+assert.match(promptSource, /柜体整体约 15% 到 25% 的一个连续局部/);
+assert.match(promptSource, /一个完整且可识别的结构单元/);
+assert.doesNotMatch(promptSource, /柜体整体约 8% 到 18%/);
 assert.match(promptSource, /近景不是产品重设计或三维结构补全/);
 assert.match(promptSource, /只能选择原始产品图中清晰可见、可直接核对的连续区域/);
 assert.match(promptSource, /左前方或右前方约 45 度/);
@@ -30,6 +33,8 @@ assert.match(promptSource, /允许柜体在新画面中的二维位置、投影�
 assert.match(promptSource, /唯一产品结构依据/);
 assert.doesNotMatch(promptSource, /原始产品图及主图一致/);
 assert.match(promptSource, /placement: "保持已确认的靠墙位置/);
+assert.match(promptSource, /placement: "近景保持已确认的正常靠墙落地位置/);
+assert.match(promptSource, /近景效果只由相机靠近和取景裁切产生/);
 assert.match(promptSource, /placementPlanForPerspective/);
 assert.match(promptSource, /candidates: \[\]/);
 assert.match(promptSource, /当前任务是参考重建，不是编辑原场景照片/);
@@ -73,6 +78,8 @@ assert.match(proxySource, /以下图片是唯一产品结构依据/);
 assert.match(localServerSource, /以下图片是唯一产品结构依据/);
 assert.match(proxySource, /刚刚这张未经 AI 改画的原始产品图是产品事实源/);
 assert.match(localServerSource, /刚刚这张未经 AI 改画的原始产品图是产品事实源/);
+assert.match(proxySource, /近景只展示柜体整体约 15% 到 25%/);
+assert.match(localServerSource, /近景只展示柜体整体约 15% 到 25%/);
 assert.match(geminiSource, /async function generatePerspectiveBatch/);
 assert.ok(
   (geminiSource.match(/const requestedPerspective = settings\.perspectives\[0\] \|\| "wide"/g) || []).length >= 2,
