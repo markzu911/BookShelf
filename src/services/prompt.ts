@@ -6,12 +6,12 @@ const referenceRoomGenerationSystemPrompt = `你是专业的柜类家居场景�
 最后一张输入图是目标柜体原始产品图，是产品外观的最高优先级依据。必须保持产品类别、模块数量、宽度关系、柜门、抽屉、开放格、层板、玻璃、柜脚、颜色、材质、木纹和可见细节，不得生成相似款。
 根据指定视角重新构建真实家居摄影画面，产品必须贴墙落地，透视、尺度、光线和阴影自然。`;
 
-function buildPerspectiveCompositionPrompt(perspective: PerspectiveOption, hasWideConsistencyReference = false): string {
+function buildPerspectiveCompositionPrompt(perspective: PerspectiveOption): string {
   if (perspective === "close") {
     return "近景只展示原始产品中一个明确存在的局部，不展示完整柜体。相机必须贴近柜体，只展示柜体整体约 8% 到 18% 的真实局部，例如一只拉手与门板交界、一个抽屉边角、一段层板连接、玻璃门框或一小块清晰木纹；只选择一个连续区域，不能同时拼接多个细节。柜体应自然超出画面四周，环境只保留少量墙面、地面或光影。必须以原始产品图为唯一几何依据，禁止补画原图不存在的五金、纹理、雕花、层板、抽屉或模块，也禁止把完整柜体缩小后继续放在画面中。";
   }
   if (perspective === "medium") {
-    return `侧面视角以柜体主体为画面核心。柜体仍按远景中的正常方式落地贴墙：柜体背板与墙面保持平行并完整贴墙，柜体自身的偏航、俯仰和翻滚角始终为零，禁止旋转、斜摆、平移、抬高、压低或拉伸柜体。只移动相机：相机沿水平圆弧移动到柜体左前方或右前方约 45 度，镜头始终对准柜体中心且保持水平，不使用荷兰角。侧板可见性只能来自相机视差，近侧侧板的投影宽度约占柜体可见投影总宽度的 12% 到 20%。画面必须清楚看到正面和一侧侧板、前沿与自然纵深关系；只展示柜体约 50% 到 70%，可自然裁掉一端、顶部或底部，不要求完整柜体。所有可见模块、柜门、抽屉、开放格和层板必须与原始产品一致。禁止正面平视、仅放大远景、镜像翻转产品或通过旋转柜体制造侧面。${hasWideConsistencyReference ? "远景参考只用于锁定同一现实摆位，原始产品图仍是产品结构的最高优先级依据。" : ""}`;
+    return "侧面视角以柜体主体为画面核心。柜体正常落地贴墙：柜体背板与墙面保持平行并完整贴墙，柜体自身的偏航、俯仰和翻滚角始终为零，禁止旋转、斜摆、平移、抬高、压低或拉伸柜体。只移动相机：相机沿水平圆弧移动到柜体左前方或右前方约 45 度，镜头始终对准柜体中心且保持水平，不使用荷兰角。允许柜体在新画面中的二维位置、投影大小和遮挡关系随相机自然变化，但现实中的柜体位置和朝向不变。侧板可见性只能来自相机视差，近侧侧板的投影宽度约占柜体可见投影总宽度的 12% 到 20%。画面必须清楚看到正面和一侧侧板、前沿与自然纵深关系；只展示柜体约 50% 到 70%，可自然裁掉一端、顶部或底部，不要求完整柜体。所有可见模块、柜门、抽屉、开放格和层板必须与原始产品一致。禁止正面平视、镜像翻转产品或通过旋转柜体制造侧面。";
   }
   return "远景完整展示柜体及其与墙面、地面、沙发、茶几或其他参照物的空间关系，保留完整家居环境。";
 }
@@ -103,18 +103,15 @@ export function buildGenerationPrompt(
   perspective: PerspectiveOption,
   extraContext = "",
   extraPrompt: string[] = [],
-  roomAsReference = false,
-  hasWideConsistencyReference = false
+  roomAsReference = false
 ): string {
   return [
     roomAsReference ? referenceRoomGenerationSystemPrompt : cabinetPlacementSystemPrompt,
     roomAsReference
-      ? hasWideConsistencyReference
-        ? "这是家居场景参考重建任务。第一张是本批次远景生成的低清尺度缩略图，只用于锁定同一柜体的物理总高度、落地位置以及顶部和底部高度关系，绝不是编辑底图或产品结构依据；中间的场景图片只用于参考装修风格、光线和氛围；最后一张是未经 AI 改画的原始产品图，是唯一高清产品结构依据。严禁复制尺度缩略图或场景参考图的正面相机机位、构图、人物位置、家具布局和柜体细节，必须依据当前指定视角重新构建画面。"
-        : "这是家居场景参考重建任务。前面的图片均只作为装修风格、光线和氛围参考，最后一张是未经 AI 改画的原始产品图。禁止把场景参考图当作编辑底图，禁止保持其正面相机机位；必须依据当前指定视角重新构建画面。"
+      ? "这是家居场景参考重建任务。前面的图片均只作为装修风格、光线和氛围参考，最后一张是未经 AI 改画的原始产品图，也是唯一产品结构依据。禁止把场景参考图当作编辑底图，禁止保持其正面相机机位；必须直接依据原始产品图和当前指定视角重新构建画面，不生成或参考任何 AI 中间图。"
       : "这是严格的家居图片编辑与营销场景生成任务。第一张是已按确认方案清理的场景底图；最后一张是未经 AI 改画的原始产品图，是产品外观的最高优先级依据。",
     "生成一张没有任何文字、价格、Logo、水印、边框或海报排版的纯场景主图。应用会在生成后统一完成中文文字和海报版式。",
-    `生成视角：${perspectiveLabels[perspective]}。采用自然家居摄影构图。${buildPerspectiveCompositionPrompt(perspective, hasWideConsistencyReference)}`,
+    `生成视角：${perspectiveLabels[perspective]}。采用自然家居摄影构图。${buildPerspectiveCompositionPrompt(perspective)}`,
     roomAsReference
       ? "执行以原始产品图为依据的场景重建，不做柜体概念设计。必须将同一个柜体放进新视角场景，逐项保持模块数量、各模块宽度关系、整体轮廓、开放格与层板关系、柜门和抽屉数量、玻璃或木门造型、柜脚、颜色、材质、木纹与可见细节。不得增删、合并、拆分或重新排列模块，也不得生成相似款。"
       : "执行产品级图片编辑，不做柜体概念设计。必须把原始产品图中的同一个柜体放进场景，逐项保持模块数量、各模块宽度关系、整体轮廓、开放格与层板关系、柜门和抽屉数量、玻璃或木门造型、柜脚、颜色、材质、木纹与可见细节。不得增删、合并、拆分或重新排列模块，不得把原场景柜体改色后冒充目标产品，也不得生成相似款。",
@@ -128,37 +125,6 @@ export function buildGenerationPrompt(
     `融合强度：${settings.blendStrength}；输出比例：${settings.ratio}；清晰度：${settings.clarity}。`,
     extraContext ? `平台传入上下文：${extraContext}` : "",
     extraPrompt.length ? `平台补充关键词：${extraPrompt.join("、")}` : ""
-  ].filter(Boolean).join("\n");
-}
-
-export function buildCameraVariationPrompt(
-  analysis: SceneAnalysis,
-  settings: PlacementSettings,
-  perspective: PerspectiveOption,
-  extraContext = "",
-  extraPrompt: string[] = []
-): string {
-  const cameraInstruction = perspective === "close"
-    ? "近景必须把相机贴近柜体，只展示柜体整体约 8% 到 18% 的一个连续真实局部。可选择一只拉手与门板交界、抽屉边角、层板连接、玻璃门框或一小块清晰木纹；柜体自然超出画面四周，禁止继续展示完整柜体或多个不相邻区域。"
-    : "侧面视角只移动相机：沿水平圆弧移动到柜体左前方或右前方约 45 度，镜头对准柜体中心并保持水平。柜体背板与墙面保持平行并完整贴墙，柜体自身的偏航、俯仰和翻滚角始终为零；禁止旋转、斜摆、平移、抬高、压低或拉伸柜体。侧板可见性只能来自相机视差，近侧侧板的投影宽度约占柜体可见投影总宽度的 12% 到 20%。只展示柜体约 50% 到 70%，可以裁掉一端、顶部或底部。";
-  return [
-    cabinetPlacementSystemPrompt,
-    "这是同一现实摆放方案的换相机任务。上一轮远景只负责锁定场景与现实摆位，不是产品结构依据。未经 AI 改画的原始产品图是唯一产品结构依据。",
-    "保持上一轮远景中的房间、墙面、地面、装修风格、柜体贴墙落地位置及周边家具关系。允许柜体在新画面中的二维位置、投影大小和遮挡关系随相机自然变化；这是换相机必然产生的透视结果，不能强行复制远景画面坐标。",
-    "现实中的柜体绝对静止：禁止旋转、斜摆、平移、抬高、压低或拉伸柜体；不得重新规划摆位，不得增加、删除或替换家具。",
-    "原始产品图是唯一产品结构依据。新镜头中的目标柜体必须是原始产品图中的同一件产品，不得依据上一轮 AI 主图改造结构，也不得生成相似款。",
-    `柜体身份卡（所有可见项目必须逐项保持）：${JSON.stringify(analysis.furnitureIdentity)}`,
-    "只允许改变虚拟相机的位置、横向方位、朝向、拍摄距离和焦距。相机机位必须与远景不同，并产生真实视差；禁止仅裁切、缩放、放大或模糊远景。",
-    "柜体产品一致性为 P0：所有在新镜头中可见的模块数量与顺序、宽度关系、柜门、抽屉、开放格、层板、玻璃、柜脚、颜色、材质、木纹、拉手和连接细节必须与原始产品图一致，不得增删、合并、拆分、重排或臆造。",
-    cameraInstruction,
-    perspective === "medium"
-      ? "侧面与远景的差异必须一眼可见：至少出现明显的横向机位变化和侧向视差；不能返回与远景相同或近似正面的构图。"
-      : "近景的画面重点必须从空间展示转为单一产品细节，远端房间大部分不可见；不得把远景简单裁切后冒充近景。",
-    buildHumanModelPrompt(settings),
-    `锁定摆放方案：${JSON.stringify(analysis.placementPlan)}`,
-    settings.notes ? `用户要求（最高优先级）：${settings.notes}` : "",
-    extraContext ? `平台上下文：${extraContext}` : "",
-    extraPrompt.length ? `平台补充关键词：${extraPrompt.join("；")}` : ""
   ].filter(Boolean).join("\n");
 }
 

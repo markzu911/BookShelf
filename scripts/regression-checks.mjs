@@ -48,19 +48,9 @@ assert.ok(
 );
 assert.match(proxySource, /Array\.isArray\(parsed\) \? parsed\[0\] : parsed/);
 assert.match(localServerSource, /Array\.isArray\(parsed\) \? parsed\[0\] : parsed/);
-assert.match(typesSource, /generationStage\?: "direct" \| "master" \| "camera"/);
-assert.match(typesSource, /previousInteractionId\?: string/);
-assert.match(typesSource, /interface GeminiMasterResponse/);
-assert.match(proxySource, /body\.generationStage === "master"/);
-assert.match(proxySource, /body\.generationStage === "camera"/);
-assert.match(localServerSource, /body\.generationStage === "master"/);
-assert.match(localServerSource, /body\.generationStage === "camera"/);
-assert.match(proxySource, /generateMasterStage/);
-assert.match(proxySource, /generateCameraStage/);
-assert.match(localServerSource, /generateMasterStage/);
-assert.match(localServerSource, /generateCameraStage/);
-assert.doesNotMatch(proxySource, /async function generateImagesWithInteractions/);
-assert.doesNotMatch(localServerSource, /async function generateImagesWithInteractions/);
+assert.doesNotMatch(typesSource, /generationStage|previousInteractionId|continuationModel|GeminiMasterResponse/);
+assert.doesNotMatch(proxySource, /generationStage|previousInteractionId|previous_interaction_id|generateMasterStage|generateCameraStage/);
+assert.doesNotMatch(localServerSource, /generationStage|previousInteractionId|previous_interaction_id|generateMasterStage|generateCameraStage/);
 assert.match(proxySource, /model: usedModel, api: usedApi/);
 assert.match(localServerSource, /model: usedModel, api: usedApi/);
 assert.match(proxySource, /\[image-generation-success\]/);
@@ -77,11 +67,7 @@ assert.ok(
   (geminiSource.match(/const requestedPerspective = settings\.perspectives\[0\] \|\| "wide"/g) || []).length >= 2,
   "场景试摆和虚拟空间服务都必须只读取第一个视角"
 );
-assert.match(geminiSource, /buildCameraVariationPrompt/);
-assert.match(geminiSource, /generationStage: "master"/);
-assert.match(geminiSource, /generationStage: "camera"/);
-assert.match(geminiSource, /clarity: "1K"/);
-assert.match(geminiSource, /previousInteractionId: masterResponse\.interactionId/);
+assert.doesNotMatch(geminiSource, /buildCameraVariationPrompt|generationStage|GeminiMasterResponse|masterResponse|previousInteractionId/);
 assert.match(geminiSource, /const retryableStatuses = new Set\(\[429, 500, 502, 503, 504\]\)/);
 assert.doesNotMatch(
   geminiSource,
@@ -91,10 +77,9 @@ assert.doesNotMatch(
 assert.match(geminiSource, /roomImage,\s*roomReferenceImages,\s*productReferenceImage/);
 assert.match(geminiSource, /response\.status === 413/);
 assert.doesNotMatch(geminiSource, /wideConsistencyReference/);
-assert.match(geminiSource, /wide: buildGenerationPrompt/);
-assert.match(geminiSource, /perspectivePrompts\[perspective\] = buildCameraVariationPrompt/);
-assert.match(promptSource, /这是同一现实摆放方案的换相机任务/);
-assert.match(promptSource, /上一轮远景只负责锁定场景与现实摆位/);
+assert.match(geminiSource, /\[perspective\]: buildGenerationPrompt\([\s\S]*perspective !== "wide"/);
+assert.match(geminiSource, /\[perspective\]: buildVirtualRoomPrompt/);
+assert.doesNotMatch(promptSource, /上一轮远景|隐藏远景|换相机任务/);
 assert.match(promptSource, /禁止旋转、斜摆、平移、抬高、压低或拉伸柜体/);
 assert.match(promptSource, /清楚看到正面和一侧侧板/);
 assert.doesNotMatch(promptSource, /相同的相机高度、焦距、拍摄距离和柜体垂直画面占比/);

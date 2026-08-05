@@ -155,9 +155,6 @@ export interface GeneratedImageResult {
 export interface GeminiGenerateRequest {
   mode: "analyze" | "cutout" | "erase" | "generate" | "quality";
   model: string;
-  generationStage?: "direct" | "master" | "camera";
-  previousInteractionId?: string;
-  continuationModel?: string;
   roomImage?: Pick<UploadedImage, "base64" | "mimeType">;
   roomReferenceImages?: Array<Pick<UploadedImage, "base64" | "mimeType">>;
   beddingImage?: Pick<UploadedImage, "base64" | "mimeType">;
@@ -181,13 +178,6 @@ export interface GeminiImageResponse {
     title: string;
     imageUrl: string;
   }>;
-}
-
-export interface GeminiMasterResponse {
-  success: true;
-  interactionId: string;
-  continuationModel: string;
-  masterImage: Pick<UploadedImage, "base64" | "mimeType">;
 }
 
 export interface GeminiQualityResponse {

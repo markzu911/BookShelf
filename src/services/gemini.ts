@@ -1,7 +1,6 @@
 import type {
   GeminiAnalyzeResponse,
   GeminiImageResponse,
-  GeminiMasterResponse,
   GeminiGenerateRequest,
   GeminiQualityResponse,
   GenerationQualityCheck,
@@ -12,7 +11,7 @@ import type {
   UploadedImage
 } from "../types";
 import { perspectiveLabels } from "../constants";
-import { buildAnalysisPrompt, buildCameraVariationPrompt, buildGenerationPrompt, buildQualityPrompt, buildVirtualAnalysisPrompt, buildVirtualRoomPrompt } from "./prompt";
+import { buildAnalysisPrompt, buildGenerationPrompt, buildQualityPrompt, buildVirtualAnalysisPrompt, buildVirtualRoomPrompt } from "./prompt";
 import { compressDataUrlToImage, preserveTransparentDataUrl, removeGeneratedStudioBackground } from "./image";
 import { resolvePlacementPlan } from "./placement";
 
@@ -178,57 +177,25 @@ export async function generatePlacementImages(
   const requestedPerspectives: PerspectiveOption[] = [requestedPerspective];
   return generatePerspectiveBatch(requestedPerspectives, async (perspective, singleViewSettings) => {
     const perspectivePrompts: Record<string, string> = {
-      wide: buildGenerationPrompt(analysis, singleViewSettings, "wide", extraContext, extraPrompt)
-    };
-    if (perspective !== "wide") {
-      perspectivePrompts[perspective] = buildCameraVariationPrompt(
+      [perspective]: buildGenerationPrompt(
         analysis,
         singleViewSettings,
         perspective,
         extraContext,
-        extraPrompt
-      );
-    }
-    if (perspective === "wide") {
-      const response = await postGemini<GeminiImageResponse>({
-        mode: "generate",
-        generationStage: "direct",
-        model: settings.model,
-        roomImage,
-        roomReferenceImages,
-        productReferenceImage,
-        analysis,
-        settings: singleViewSettings,
-        systemPrompt: "只生成当前指定视角的一张柜类试摆场景主图。",
-        perspectivePrompts
-      });
-      return response.images;
-    }
-
-    const masterResponse = await postGemini<GeminiMasterResponse>({
+        extraPrompt,
+        perspective !== "wide"
+      )
+    };
+    const response = await postGemini<GeminiImageResponse>({
       mode: "generate",
-      generationStage: "master",
       model: settings.model,
       roomImage,
       roomReferenceImages,
       productReferenceImage,
       analysis,
-      settings: { ...singleViewSettings, perspectives: ["wide"], clarity: "1K" },
-      systemPrompt: "生成一张低清隐藏远景，只用于锁定现实场景与柜体贴墙落地摆位。",
-      perspectivePrompts: { wide: perspectivePrompts.wide }
-    });
-    const response = await postGemini<GeminiImageResponse>({
-      mode: "generate",
-      generationStage: "camera",
-      previousInteractionId: masterResponse.interactionId,
-      continuationModel: masterResponse.continuationModel,
-      model: settings.model,
-      roomImage: masterResponse.masterImage,
-      productReferenceImage,
-      analysis,
       settings: singleViewSettings,
-      systemPrompt: "只在同一现实摆位中移动相机，输出用户选择的最终视角。",
-      perspectivePrompts: { [perspective]: perspectivePrompts[perspective] }
+      systemPrompt: "直接根据原始场景与原始产品生成当前指定视角的一张柜类试摆场景主图，不生成中间图。",
+      perspectivePrompts
     });
     return response.images;
   }, settings);
@@ -245,53 +212,16 @@ export async function generateVirtualRoomImages(
   const requestedPerspectives: PerspectiveOption[] = [requestedPerspective];
   return generatePerspectiveBatch(requestedPerspectives, async (perspective, singleViewSettings) => {
     const perspectivePrompts: Record<string, string> = {
-      wide: buildVirtualRoomPrompt(analysis, singleViewSettings, "wide", extraContext, extraPrompt)
+      [perspective]: buildVirtualRoomPrompt(analysis, singleViewSettings, perspective, extraContext, extraPrompt)
     };
-    if (perspective !== "wide") {
-      perspectivePrompts[perspective] = buildCameraVariationPrompt(
-        analysis,
-        singleViewSettings,
-        perspective,
-        extraContext,
-        extraPrompt
-      );
-    }
-    if (perspective === "wide") {
-      const response = await postGemini<GeminiImageResponse>({
-        mode: "generate",
-        generationStage: "direct",
-        model: settings.model,
-        beddingImage,
-        analysis,
-        settings: singleViewSettings,
-        systemPrompt: "只生成当前指定视角的一张虚拟家居场景主图。",
-        perspectivePrompts
-      });
-      return response.images;
-    }
-
-    const masterResponse = await postGemini<GeminiMasterResponse>({
-      mode: "generate",
-      generationStage: "master",
-      model: settings.model,
-      beddingImage,
-      analysis,
-      settings: { ...singleViewSettings, perspectives: ["wide"], clarity: "1K" },
-      systemPrompt: "生成一张低清隐藏远景，只用于锁定虚拟场景与柜体贴墙落地摆位。",
-      perspectivePrompts: { wide: perspectivePrompts.wide }
-    });
     const response = await postGemini<GeminiImageResponse>({
       mode: "generate",
-      generationStage: "camera",
-      previousInteractionId: masterResponse.interactionId,
-      continuationModel: masterResponse.continuationModel,
       model: settings.model,
-      roomImage: masterResponse.masterImage,
       beddingImage,
       analysis,
       settings: singleViewSettings,
-      systemPrompt: "只在同一现实摆位中移动相机，输出用户选择的最终视角。",
-      perspectivePrompts: { [perspective]: perspectivePrompts[perspective] }
+      systemPrompt: "直接根据原始产品生成当前指定视角的一张虚拟家居场景主图，不生成中间图。",
+      perspectivePrompts
     });
     return response.images;
   }, settings);
