@@ -18,7 +18,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { defaultSettings, perspectiveLabels, TOOL_COST, TOOL_NAME, virtualRoomStyleLabels } from "./constants";
 import styles from "./CabinetPlacementTool.module.css";
 import { analyzeScene, analyzeVirtualFurniture, erasePlannedFurniture, extractFurnitureForeground, generatePlacementImages, generateVirtualRoomImages } from "./services/gemini";
-import { compressDataUrlToBlob, compressImage, GEMINI_IMAGE_TARGET_BYTES } from "./services/image";
+import { compressDataUrlToBlob, compressImage, GEMINI_IMAGE_TARGET_BYTES, GEMINI_PRODUCT_TARGET_BYTES } from "./services/image";
 import { composeCabinetPoster } from "./services/poster";
 import {
   consumeIntegral,
@@ -255,9 +255,9 @@ export function CabinetPlacementTool() {
     try {
       const image = await compressImage(
         file,
-        undefined,
-        undefined,
-        GEMINI_IMAGE_TARGET_BYTES
+        kind === "furniture" ? 1800 : undefined,
+        kind === "furniture" ? 0.82 : undefined,
+        kind === "furniture" ? GEMINI_PRODUCT_TARGET_BYTES : GEMINI_IMAGE_TARGET_BYTES
       );
       setResults([]);
       if (kind === "room") {
@@ -655,7 +655,7 @@ export function CabinetPlacementTool() {
   );
 
   return (
-    <main className={styles.toolShell}>
+    <main className={`${styles.toolShell} ${mode === "expert" && guidedStep === "generating" ? styles.generatingShell : ""}`}>
       <header className={styles.toolHeader}>
         <div className={styles.brandBlock}>
           <div className={styles.logoMark}>

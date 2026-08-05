@@ -3,8 +3,10 @@ import { readFile } from "node:fs/promises";
 
 const promptSource = await readFile(new URL("../src/services/prompt.ts", import.meta.url), "utf8");
 const componentSource = await readFile(new URL("../src/CabinetPlacementTool.tsx", import.meta.url), "utf8");
+const cssSource = await readFile(new URL("../src/CabinetPlacementTool.module.css", import.meta.url), "utf8");
 const constantsSource = await readFile(new URL("../src/constants.ts", import.meta.url), "utf8");
 const geminiSource = await readFile(new URL("../src/services/gemini.ts", import.meta.url), "utf8");
+const imageSource = await readFile(new URL("../src/services/image.ts", import.meta.url), "utf8");
 const proxySource = await readFile(new URL("../api/proxy.ts", import.meta.url), "utf8");
 const localServerSource = await readFile(new URL("../scripts/local-trial-server.mjs", import.meta.url), "utf8");
 const typesSource = await readFile(new URL("../src/types.ts", import.meta.url), "utf8");
@@ -16,6 +18,8 @@ assert.doesNotMatch(promptSource, /人物不能遮挡柜体主要轮廓/);
 assert.match(promptSource, /最后一张是未经 AI 改画的原始产品图，是产品外观的最高优先级依据/);
 assert.match(promptSource, /近景只展示原始产品中一个明确存在的局部/);
 assert.match(promptSource, /柜体整体约 8% 到 18% 的真实局部/);
+assert.match(promptSource, /近景不是产品重设计或三维结构补全/);
+assert.match(promptSource, /只能选择原始产品图中清晰可见、可直接核对的连续区域/);
 assert.match(promptSource, /左前方或右前方约 45 度/);
 assert.match(promptSource, /只展示柜体约 50% 到 70%/);
 assert.match(promptSource, /侧板可见性只能来自相机视差/);
@@ -31,6 +35,11 @@ assert.match(promptSource, /candidates: \[\]/);
 assert.match(promptSource, /当前任务是参考重建，不是编辑原场景照片/);
 assert.match(promptSource, /禁止把场景参考图当作编辑底图/);
 assert.match(promptSource, /近景质检不得要求画面出现完整柜体/);
+assert.match(promptSource, /产品一致性为 P0，优先于用户备注、场景参考、摆放方案、软装方案、平台上下文、关键词和视角构图/);
+assert.match(promptSource, /任何低优先级要求与产品结构、数量、比例、颜色、材质或可见细节冲突时，必须忽略冲突部分/);
+assert.doesNotMatch(promptSource, /用户额外要求（最高优先级/);
+assert.doesNotMatch(promptSource, /用户当前要求（最高优先级/);
+assert.match(constantsSource, /绝不能覆盖第 1 条产品一致性/);
 assert.match(constantsSource, /wide: "远景（空间全景）"/);
 assert.match(constantsSource, /medium: "侧面视角（柜体主体）"/);
 assert.match(constantsSource, /close: "近景（柜体细节）"/);
@@ -62,6 +71,8 @@ assert.match(proxySource, /productReference: Boolean\(body\.productReferenceImag
 assert.match(localServerSource, /productReference: Boolean\(body\.productReferenceImage\?\.base64\)/);
 assert.match(proxySource, /以下图片是唯一产品结构依据/);
 assert.match(localServerSource, /以下图片是唯一产品结构依据/);
+assert.match(proxySource, /刚刚这张未经 AI 改画的原始产品图是产品事实源/);
+assert.match(localServerSource, /刚刚这张未经 AI 改画的原始产品图是产品事实源/);
 assert.match(geminiSource, /async function generatePerspectiveBatch/);
 assert.ok(
   (geminiSource.match(/const requestedPerspective = settings\.perspectives\[0\] \|\| "wide"/g) || []).length >= 2,
@@ -96,6 +107,13 @@ assert.match(componentSource, /Object\.entries\(perspectiveLabels\)/);
 assert.doesNotMatch(componentSource, /每个视角生成一张完整海报/);
 assert.match(componentSource, /title: `\$\{item\.title\}海报`/);
 assert.match(componentSource, /clarity: settings\.clarity === "4K" \? "2K" : settings\.clarity/);
+assert.match(imageSource, /export const GEMINI_PRODUCT_TARGET_BYTES = 900 \* 1024/);
+assert.match(componentSource, /kind === "furniture" \? 1800 : undefined/);
+assert.match(componentSource, /kind === "furniture" \? GEMINI_PRODUCT_TARGET_BYTES : GEMINI_IMAGE_TARGET_BYTES/);
+assert.match(componentSource, /mode === "expert" && guidedStep === "generating" \? styles\.generatingShell : ""/);
+assert.match(cssSource, /\.generatingShell[\s\S]*overflow:\s*hidden/);
+assert.match(cssSource, /\.generatingShell \.generatingCard[\s\S]*min-height:\s*0/);
+assert.match(cssSource, /@media \(max-width: 880px\)[\s\S]*\.generatingShell[\s\S]*overflow-y:\s*auto/);
 
 const generateHandlerStart = componentSource.indexOf("async function handleGenerate");
 const posterCompositionPosition = componentSource.indexOf("await composeCabinetPoster", generateHandlerStart);

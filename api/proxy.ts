@@ -341,6 +341,13 @@ function getBeddingImage(body: GeminiRequestBody): { base64: string; mimeType: s
   return body.beddingImage || body.sofaImage;
 }
 
+function finalProductLockInstruction(perspective: string) {
+  const closeRule = perspective === "close"
+    ? "近景只能从这张图中清晰可见的一个连续区域做裁取和放大；不得推测不可见结构、重绘产品或生成相似细节。"
+    : "所有可见产品结构、模块、比例、颜色、材质与细节都必须以这张图为准，不得重设计或生成相似款。";
+  return `刚刚这张未经 AI 改画的原始产品图是产品事实源。${closeRule}`;
+}
+
 function requestImageGenerateContent(body: GeminiRequestBody, apiKey: string, model: string, perspective: string) {
   const prompt = body.perspectivePrompts?.[perspective] || body.systemPrompt || "";
   const parts: GeminiPart[] = [{ text: prompt }];
@@ -358,10 +365,12 @@ function requestImageGenerateContent(body: GeminiRequestBody, apiKey: string, mo
   if (beddingImage?.base64) {
     parts.push({ text: "以下图片是唯一产品结构依据。逐项锁定可见模块、柜门、抽屉、层板、开放格、比例、颜色和材质。" });
     parts.push({ inlineData: { mimeType: beddingImage.mimeType || "image/jpeg", data: beddingImage.base64 } });
+    parts.push({ text: finalProductLockInstruction(perspective) });
   }
   if (body.productReferenceImage?.base64) {
     parts.push({ text: "以下图片是唯一产品结构依据。逐项锁定可见模块、柜门、抽屉、层板、开放格、比例、颜色和材质。" });
     parts.push({ inlineData: { mimeType: body.productReferenceImage.mimeType || "image/jpeg", data: body.productReferenceImage.base64 } });
+    parts.push({ text: finalProductLockInstruction(perspective) });
   }
   return fetchWithDiagnostics(`generateContent:${model}:${perspective}`, `https://generativelanguage.googleapis.com/v1/models/${encodeURIComponent(model)}:generateContent`, {
     method: "POST",
@@ -408,11 +417,13 @@ function requestImageInteraction(body: GeminiRequestBody, apiKey: string, model:
         ])),
         ...(beddingImage?.base64 ? [
           { type: "text", text: "以下未经 AI 改画的原始产品图是唯一产品结构依据。" },
-          { type: "image", mime_type: beddingImage.mimeType || "image/jpeg", data: beddingImage.base64 }
+          { type: "image", mime_type: beddingImage.mimeType || "image/jpeg", data: beddingImage.base64 },
+          { type: "text", text: finalProductLockInstruction(perspective) }
         ] : []),
         ...(body.productReferenceImage?.base64 ? [
           { type: "text", text: "以下未经 AI 改画的原始产品图是唯一产品结构依据。" },
-          { type: "image", mime_type: body.productReferenceImage.mimeType || "image/jpeg", data: body.productReferenceImage.base64 }
+          { type: "image", mime_type: body.productReferenceImage.mimeType || "image/jpeg", data: body.productReferenceImage.base64 },
+          { type: "text", text: finalProductLockInstruction(perspective) }
         ] : [])
       ];
   return fetchWithDiagnostics(`interactions:${model}:${perspective}:direct`, "https://generativelanguage.googleapis.com/v1beta/interactions", {

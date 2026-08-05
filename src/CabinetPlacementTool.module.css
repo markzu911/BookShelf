@@ -6,6 +6,78 @@
     linear-gradient(180deg, #f7f1e7 0%, #eee6d9 42%, #e9edf0 100%);
 }
 
+.generatingShell {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100vh;
+  min-height: 0;
+  padding-bottom: 0;
+  overflow: hidden;
+}
+
+.generatingShell .workbenchFrame {
+  align-items: stretch;
+  height: 100%;
+  min-height: 0;
+  margin-top: 0;
+  padding: 16px 0;
+}
+
+.generatingShell .workbenchSidebar {
+  position: relative;
+  top: auto;
+  height: 100%;
+  min-height: 0;
+  margin-top: 0;
+}
+
+.generatingShell .workbenchMain {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  min-height: 0;
+}
+
+.generatingShell .flowHeader {
+  padding-bottom: 12px;
+}
+
+.generatingShell .flowHeader h2 {
+  font-size: clamp(34px, 4.2vw, 54px);
+  line-height: 1;
+}
+
+.generatingShell .flowHeader p {
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.generatingShell .statusBar {
+  gap: 8px;
+  padding: 10px 16px;
+}
+
+.generatingShell .workbenchStage {
+  display: grid;
+  min-height: 0;
+  margin-top: 12px;
+}
+
+.generatingShell .generatingCard {
+  height: 100%;
+  min-height: 0;
+  padding: min(4vh, 32px);
+}
+
+.generatingShell .generatingCard h3 {
+  margin-top: 12px;
+  font-size: 24px;
+}
+
+.generatingShell .generatingCard p {
+  line-height: 1.55;
+}
+
 .toolHeader {
   position: sticky;
   top: 0;
@@ -1541,6 +1613,36 @@
 }
 
 @media (max-width: 880px) {
+  .generatingShell {
+    display: block;
+    height: auto;
+    min-height: 100vh;
+    padding-bottom: 44px;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .generatingShell .workbenchFrame {
+    height: auto;
+    margin-top: 28px;
+    padding: 0;
+  }
+
+  .generatingShell .workbenchSidebar {
+    height: auto;
+    min-height: auto;
+  }
+
+  .generatingShell .workbenchMain,
+  .generatingShell .workbenchStage {
+    display: block;
+  }
+
+  .generatingShell .generatingCard {
+    height: auto;
+    min-height: 360px;
+  }
+
   .toolHeader,
   .flowHeader,
   .focusLayout,
