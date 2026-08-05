@@ -14,6 +14,10 @@ assert.match(promptSource, /不得生成裸体人物、人体假模型、人台�
 assert.doesNotMatch(promptSource, /人物不能遮挡柜体主要轮廓/);
 assert.match(promptSource, /第三张是未经 AI 改画的原始产品图，是产品外观的最高优先级依据/);
 assert.match(promptSource, /近景只展示原始产品中一个明确存在的局部/);
+assert.match(promptSource, /侧面空场景重建/);
+assert.match(promptSource, /画面中不得出现任何书柜、斗柜、组合柜或柜类产品/);
+assert.match(promptSource, /viewpoint/);
+assert.match(promptSource, /sideDirectionForProduct/);
 assert.match(promptSource, /相机可以位于柜体左前方或右前方约40至45度/);
 assert.doesNotMatch(promptSource, /50至55度/);
 assert.match(promptSource, /相机向柜体靠近/);
@@ -63,6 +67,11 @@ assert.doesNotMatch(localServerSource, /请先生成锁定布局的远景主图/
 assert.match(proxySource, /只输出当前指定视角的最终效果图，不要改成其他视角/);
 assert.match(localServerSource, /只输出当前指定视角的最终效果图，不要改成其他视角/);
 assert.match(geminiSource, /async function generatePerspectiveBatch/);
+assert.match(geminiSource, /perspective === "medium"/);
+assert.match(geminiSource, /createLockedProductForeground\(productReferenceImage\)/);
+assert.match(geminiSource, /composeLockedProductScene\(/);
+assert.match(geminiSource, /buildLockedSideScenePrompt/);
+assert.match(geminiSource, /viewpoint: readableText/);
 assert.ok(
   (geminiSource.match(/const requestedPerspective = settings\.perspectives\[0\] \|\| "wide"/g) || []).length >= 2,
   "场景试摆和虚拟空间服务都必须只读取第一个视角"
@@ -75,12 +84,8 @@ assert.doesNotMatch(
 );
 assert.match(geminiSource, /:\s*\{ roomImage, roomReferenceImages \}/);
 assert.match(geminiSource, /response\.status === 413/);
-assert.match(geminiSource, /perspective === "medium" && wideConsistencyReference/);
-assert.match(geminiSource, /\[useWideScaleAnchor, roomImage, \.\.\.roomReferenceImages\]/);
 assert.match(geminiSource, /roomReferenceImages: referenceImages/);
-assert.match(geminiSource, /let wideConsistencyReference/);
-assert.match(geminiSource, /wide-scale-anchor\.jpg/);
-assert.match(geminiSource, /wide-scale-anchor\.jpg",\s*192,\s*0\.55,\s*64 \* 1024/);
+assert.doesNotMatch(geminiSource, /wide-scale-anchor\.jpg/);
 assert.match(promptSource, /低清尺度缩略图/);
 assert.match(promptSource, /远景尺度缩略图不是编辑底图，也不是产品结构依据/);
 assert.match(promptSource, /原始产品图是唯一高清产品结构依据/);
@@ -101,6 +106,8 @@ assert.match(componentSource, /Object\.entries\(perspectiveLabels\)/);
 assert.doesNotMatch(componentSource, /每个视角生成一张完整海报/);
 assert.match(componentSource, /title: `\$\{item\.title\}海报`/);
 assert.match(componentSource, /clarity: settings\.clarity === "4K" \? "2K" : settings\.clarity/);
+assert.match(componentSource, /selectedPerspective === "medium"\s*\? await createLockedProductForeground\(furnitureImage\)/);
+assert.match(componentSource, /productImage: lockedSideProduct \|\| furnitureForegroundImage \|\| furnitureImage/);
 
 const generateHandlerStart = componentSource.indexOf("async function handleGenerate");
 const posterCompositionPosition = componentSource.indexOf("await composeCabinetPoster", generateHandlerStart);
@@ -140,5 +147,14 @@ const greenPixels = makePixels(width, height, (x, y) => {
 const greenResult = removeConnectedStudioBackground(greenPixels, width, height);
 assert.equal(greenResult.pixels[3], 0, "绿幕边角必须变为透明");
 assert.equal(greenResult.pixels[((6 * width + 6) * 4) + 3], 255, "绿幕抠除不能损伤柜体主体");
+
+const whiteShadowPixels = makePixels(width, height, (x, y) => {
+  if (x >= 2 && x <= 7 && y >= 2 && y <= 9) return [72, 61, 54, 255];
+  if (x >= 8 && x <= 10 && y >= 8 && y <= 10) return [164, 162, 159, 255];
+  return [250, 250, 250, 255];
+});
+const whiteShadowResult = removeConnectedStudioBackground(whiteShadowPixels, width, height);
+assert.equal(whiteShadowResult.pixels[((9 * width + 9) * 4) + 3], 0, "白底相连的中性灰棚拍投影必须移除");
+assert.equal(whiteShadowResult.pixels[((5 * width + 5) * 4) + 3], 255, "深色柜体像素不能被白底投影清理损伤");
 
 console.log("Regression checks passed.");

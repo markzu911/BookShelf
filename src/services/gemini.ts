@@ -11,8 +11,22 @@ import type {
   UploadedImage
 } from "../types";
 import { perspectiveLabels } from "../constants";
-import { buildAnalysisPrompt, buildGenerationPrompt, buildQualityPrompt, buildVirtualAnalysisPrompt, buildVirtualRoomPrompt } from "./prompt";
-import { compressDataUrlToImage, preserveTransparentDataUrl, removeGeneratedStudioBackground } from "./image";
+import {
+  buildAnalysisPrompt,
+  buildGenerationPrompt,
+  buildLockedSideScenePrompt,
+  buildLockedVirtualSideScenePrompt,
+  buildQualityPrompt,
+  buildVirtualAnalysisPrompt,
+  buildVirtualRoomPrompt
+} from "./prompt";
+import {
+  composeLockedProductScene,
+  compressDataUrlToImage,
+  createLockedProductForeground,
+  preserveTransparentDataUrl,
+  removeGeneratedStudioBackground
+} from "./image";
 import { resolvePlacementPlan } from "./placement";
 
 export async function analyzeScene(
@@ -82,6 +96,7 @@ function normalizeFurnitureIdentity(value: unknown, fallback: unknown) {
     shelves: readableText(source.shelves, "以参考图可见层板与开放格为准"),
     material: readableText(source.material, "以参考图为准"),
     color: readableText(source.color, "以参考图为准"),
+    viewpoint: readableText(source.viewpoint, "右前方视角；侧面方向跟随原产品图可见侧板"),
     details: readableList(source.details, ["以参考图可见细节为准"])
   };
 }
@@ -171,17 +186,37 @@ export async function generatePlacementImages(
   analysis: SceneAnalysis,
   settings: PlacementSettings,
   extraContext: string,
-  extraPrompt: string[]
+  extraPrompt: string[],
+  lockedProductForeground?: UploadedImage | null
 ): Promise<PerspectiveGenerationBatch> {
   const requestedPerspective = settings.perspectives[0] || "wide";
   const requestedPerspectives: PerspectiveOption[] = [requestedPerspective];
-  let wideConsistencyReference: UploadedImage | null = null;
   return generatePerspectiveBatch(requestedPerspectives, async (perspective, singleViewSettings) => {
+    if (perspective === "medium") {
+      const lockedProduct = lockedProductForeground || await createLockedProductForeground(productReferenceImage);
+      const sceneResponse = await postGemini<GeminiImageResponse>({
+        mode: "generate",
+        model: settings.model,
+        roomReferenceImages: [roomImage, ...roomReferenceImages],
+        analysis,
+        settings: singleViewSettings,
+        systemPrompt: "只重建与产品原图方向一致的侧前方空场景，不得生成任何柜类产品。",
+        perspectivePrompts: {
+          medium: buildLockedSideScenePrompt(analysis, singleViewSettings, extraContext, extraPrompt)
+        }
+      });
+      const emptyScene = sceneResponse.images.find((image) => image.perspective === "medium") || sceneResponse.images[0];
+      if (!emptyScene?.imageUrl) throw new Error("Gemini 未返回侧面空场景");
+      return [{
+        ...emptyScene,
+        perspective: "medium",
+        title: perspectiveLabels.medium,
+        imageUrl: await composeLockedProductScene(emptyScene.imageUrl, lockedProduct)
+      }];
+    }
+
     const roomAsReference = perspective !== "wide";
-    const useWideScaleAnchor = perspective === "medium" && wideConsistencyReference;
-    const referenceImages = useWideScaleAnchor
-      ? [useWideScaleAnchor, roomImage, ...roomReferenceImages]
-      : [roomImage, ...roomReferenceImages];
+    const referenceImages = [roomImage, ...roomReferenceImages];
     const response = await postGemini<GeminiImageResponse>({
       mode: "generate",
       model: settings.model,
@@ -202,22 +237,10 @@ export async function generatePlacementImages(
           extraContext,
           extraPrompt,
           roomAsReference,
-          Boolean(useWideScaleAnchor)
+          false
         )
       }
     });
-    if (perspective === "wide") {
-      const wideImage = response.images.find((image) => image.perspective === "wide") || response.images[0];
-      if (wideImage?.imageUrl) {
-        wideConsistencyReference = await compressDataUrlToImage(
-          wideImage.imageUrl,
-          "wide-scale-anchor.jpg",
-          192,
-          0.55,
-          64 * 1024
-        );
-      }
-    }
     return response.images;
   }, settings);
 }
@@ -227,11 +250,34 @@ export async function generateVirtualRoomImages(
   analysis: SceneAnalysis,
   settings: PlacementSettings,
   extraContext: string,
-  extraPrompt: string[]
+  extraPrompt: string[],
+  lockedProductForeground?: UploadedImage | null
 ): Promise<PerspectiveGenerationBatch> {
   const requestedPerspective = settings.perspectives[0] || "wide";
   const requestedPerspectives: PerspectiveOption[] = [requestedPerspective];
   return generatePerspectiveBatch(requestedPerspectives, async (perspective, singleViewSettings) => {
+    if (perspective === "medium") {
+      const lockedProduct = lockedProductForeground || await createLockedProductForeground(beddingImage);
+      const sceneResponse = await postGemini<GeminiImageResponse>({
+        mode: "generate",
+        model: settings.model,
+        analysis,
+        settings: singleViewSettings,
+        systemPrompt: "只生成与产品原图方向一致的侧前方虚拟家居空场景，不得生成任何柜类产品。",
+        perspectivePrompts: {
+          medium: buildLockedVirtualSideScenePrompt(analysis, singleViewSettings, extraContext, extraPrompt)
+        }
+      });
+      const emptyScene = sceneResponse.images.find((image) => image.perspective === "medium") || sceneResponse.images[0];
+      if (!emptyScene?.imageUrl) throw new Error("Gemini 未返回虚拟侧面空场景");
+      return [{
+        ...emptyScene,
+        perspective: "medium",
+        title: perspectiveLabels.medium,
+        imageUrl: await composeLockedProductScene(emptyScene.imageUrl, lockedProduct)
+      }];
+    }
+
     const response = await postGemini<GeminiImageResponse>({
       mode: "generate",
       model: settings.model,

@@ -63,9 +63,9 @@ export function buildAnalysisPrompt(extraContext = "", extraPrompt: string[] = [
     cabinetPlacementSystemPrompt,
     "输入图片顺序为：第一张是用户的家居场景主图；如有后续场景图，它们是同一空间的补充角度；最后一张是要试摆的柜类产品图。请综合分析并返回严格 JSON，不要输出 Markdown。",
     "场景分析必须覆盖：空间类型、可用墙面、地面、门窗、通道、采光、已有家具、墙面装饰、适合保留和可能需要移除的物品。",
-    "产品分析必须先自动判断产品是书柜、组合柜、斗柜、餐边柜或其他柜类，再识别整体轮廓、模块数量、开放格、层板、柜门、玻璃、抽屉、柜脚、颜色、材质、木纹和可见细节。不要要求或虚构真实尺寸。",
+    "产品分析必须先自动判断产品是书柜、组合柜、斗柜、餐边柜或其他柜类，再识别整体轮廓、模块数量、开放格、层板、柜门、玻璃、抽屉、柜脚、颜色、材质、木纹、可见侧板、产品图是左前方/右前方/正面视角和可见细节。不要要求或虚构真实尺寸。",
     "JSON 顶层字段严格为：roomSummary, furnitureSummary, furnitureIdentity, lighting, perspective, placementAdvice, constraints, placementPlan, stylingPlan, posterCopy。",
-    "furnitureIdentity 字段严格为：category, silhouette, structure, doors, drawers, shelves, material, color, details。前八项为中文字符串，details 为中文字符串数组。",
+    "furnitureIdentity 字段严格为：category, silhouette, structure, doors, drawers, shelves, material, color, viewpoint, details。前九项为中文字符串；viewpoint 必须明确写左前方、右前方或正面以及哪一侧板可见；details 为中文字符串数组。",
     "placementPlan 字段严格为：summary, placement, facing, scale, preserve, remove, avoid, rationale, candidates, selectedCandidateId。candidates 包含 2 到 3 个方案，每项字段严格为 id, label, placement, facing, scale, score, reasons, blocksWalkway, conflictsWithPreservedItems, violatesUserRequirements。",
     "stylingPlan 字段严格为：summary, books, ornaments, lighting, atmosphere。请根据柜体开放区域和场景风格自动规划书籍、陶瓷、艺术摆件、唱片、灯具或生活物品。",
     "posterCopy 字段严格为：seriesName, productName, headline, description, englishDescription。生成简洁、克制、适合高端家居海报的文案；不要包含尺寸、容量、价格、品牌承诺或无法从图片确认的材质等级。",
@@ -85,9 +85,9 @@ export function buildVirtualAnalysisPrompt(
   return [
     cabinetPlacementSystemPrompt,
     `输入图片只有一张柜类产品图。请识别产品，并为它规划一个${styleLabel}虚拟家居空间和海报文案。返回严格 JSON，不要输出 Markdown。`,
-    "先自动判断产品是书柜、组合柜、斗柜、餐边柜或其他柜类，再识别整体轮廓、模块数量、开放格、层板、柜门、玻璃、抽屉、柜脚、颜色、材质、木纹和可见细节。不要要求或虚构真实尺寸。",
+    "先自动判断产品是书柜、组合柜、斗柜、餐边柜或其他柜类，再识别整体轮廓、模块数量、开放格、层板、柜门、玻璃、抽屉、柜脚、颜色、材质、木纹、可见侧板、产品图是左前方/右前方/正面视角和可见细节。不要要求或虚构真实尺寸。",
     "JSON 顶层字段严格为：roomSummary, furnitureSummary, furnitureIdentity, lighting, perspective, placementAdvice, constraints, placementPlan, stylingPlan, posterCopy。",
-    "furnitureIdentity 字段严格为：category, silhouette, structure, doors, drawers, shelves, material, color, details。",
+    "furnitureIdentity 字段严格为：category, silhouette, structure, doors, drawers, shelves, material, color, viewpoint, details。viewpoint 必须明确写左前方、右前方或正面以及哪一侧板可见。",
     "placementPlan 字段严格为：summary, placement, facing, scale, preserve, remove, avoid, rationale, candidates, selectedCandidateId。虚拟空间不需要生成候选位，candidates 返回空数组，selectedCandidateId 返回空字符串。",
     "stylingPlan 字段严格为：summary, books, ornaments, lighting, atmosphere。根据柜体开放区域和装修风格自动规划书籍、陶瓷、艺术摆件、唱片、灯具或生活物品。",
     "posterCopy 字段严格为：seriesName, productName, headline, description, englishDescription。生成高端家居海报文案，不要包含尺寸、容量、价格、品牌承诺或无法确认的材质等级。",
@@ -95,6 +95,64 @@ export function buildVirtualAnalysisPrompt(
     extraContext ? `平台传入上下文：${extraContext}` : "",
     extraPrompt.length ? `平台补充关键词：${extraPrompt.join("、")}` : ""
   ].filter(Boolean).join("\n");
+}
+
+export function buildLockedSideScenePrompt(
+  analysis: SceneAnalysis,
+  settings: PlacementSettings,
+  extraContext = "",
+  extraPrompt: string[] = []
+): string {
+  const sideDirection = sideDirectionForProduct(analysis);
+  return [
+    "这是侧面空场景重建任务。输入图只用于确认同一个房间的装修、主要家具、墙地关系、色彩与采光，不用于生成柜体。",
+    `产品原图拍摄方向为“${analysis.furnitureIdentity.viewpoint}”。将场景相机移动到目标墙面的${sideDirection}约30至40度，镜头对准目标墙面中心，使背景透视方向与产品原图一致。通过墙脚线、地板和天花线产生清楚的侧向纵深，不能返回正面平视、相反方向或近似正交投影。`,
+    "保持为同一个房间：保留原场景的门窗、梁柱、墙地材质、窗帘、沙发、茶几、灯具、植物和主要家具关系；相机移动后新露出的少量区域按原装修自然补全，不得随机更换房型或装修风格。",
+    "目标墙面中央必须预留连续、干净、贴墙落地的柜体安装区域，约占画面横向宽度的86%和纵向高度的78%。该区域不要放人物、沙发、桌椅、植物、灯具、墙画或其他遮挡物。",
+    "画面中不得出现任何书柜、斗柜、组合柜或柜类产品，也不得出现柜体轮廓、柜门、抽屉、层板、开放格或相似家具；应用会在生成后把用户上传的原始产品像素合成到预留区域。",
+    "只输出没有文字、价格、Logo、水印、边框或海报排版的真实家居空场景。",
+    settings.addHumanModel
+      ? "用户已勾选真人模特：仅可在画面最左侧或最右侧非预留区域放置一位衣着完整、比例自然的真人，不得站在中央预留墙面前。"
+      : "用户未勾选真人模特：不得出现真实人物、人体假模型、人台、雕塑或人形装饰。",
+    `原场景摘要：${analysis.roomSummary}`,
+    `原场景光线：${analysis.lighting}`,
+    `必须保留：${analysis.placementPlan.preserve.join("；")}`,
+    settings.notes ? `用户额外要求（不得覆盖上述柜体预留规则）：${settings.notes}` : "",
+    `输出比例：${settings.ratio}；清晰度：${settings.clarity}。`,
+    extraContext ? `平台传入上下文：${extraContext}` : "",
+    extraPrompt.length ? `平台补充关键词：${extraPrompt.join("、")}` : ""
+  ].filter(Boolean).join("\n");
+}
+
+export function buildLockedVirtualSideScenePrompt(
+  analysis: SceneAnalysis,
+  settings: PlacementSettings,
+  extraContext = "",
+  extraPrompt: string[] = []
+): string {
+  const styleLabel = virtualRoomStyleLabels[settings.virtualRoomStyle];
+  const sideDirection = sideDirectionForProduct(analysis);
+  return [
+    "这是侧面空场景重建任务。只生成用于后续产品像素合成的空家居背景，不生成任何柜类产品。",
+    `生成一个真实完整的${styleLabel}客厅、书房或家庭阅读区。产品原图拍摄方向为“${analysis.furnitureIdentity.viewpoint}”，相机位于目标墙面的${sideDirection}约30至40度，镜头对准墙面中心，使背景透视方向与产品原图一致；墙脚线、地板和天花线必须呈现明确的侧向纵深。`,
+    "目标墙面中央预留连续、干净、贴墙落地的柜体安装区域，约占画面横向宽度的86%和纵向高度的78%；预留区域内不得放置任何家具、人物、植物、灯具或墙画。",
+    "画面中不得出现任何书柜、斗柜、组合柜或柜类产品，也不得出现柜门、抽屉、层板、开放格或相似家具。",
+    "只输出没有文字、价格、Logo、水印、边框或海报排版的真实家居空场景。",
+    settings.addHumanModel
+      ? "用户已勾选真人模特：仅可在画面最左侧或最右侧非预留区域放置一位衣着完整、比例自然的真人。"
+      : "用户未勾选真人模特：不得出现真实人物、人体假模型、人台、雕塑或人形装饰。",
+    `空间氛围：${analysis.stylingPlan.atmosphere}`,
+    settings.notes ? `用户额外要求（不得覆盖上述柜体预留规则）：${settings.notes}` : "",
+    `输出比例：${settings.ratio}；清晰度：${settings.clarity}。`,
+    extraContext ? `平台传入上下文：${extraContext}` : "",
+    extraPrompt.length ? `平台补充关键词：${extraPrompt.join("、")}` : ""
+  ].filter(Boolean).join("\n");
+}
+
+function sideDirectionForProduct(analysis: SceneAnalysis): "左前方" | "右前方" {
+  const viewpoint = analysis.furnitureIdentity.viewpoint;
+  if (/左前|左侧板|左侧可见/.test(viewpoint) && !/右前|右侧板|右侧可见/.test(viewpoint)) return "左前方";
+  return "右前方";
 }
 
 export function buildGenerationPrompt(

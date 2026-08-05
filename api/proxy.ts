@@ -541,6 +541,7 @@ function createMockGeminiResponse(body: GeminiRequestBody) {
           shelves: "以开放格和层板关系为准",
           material: "以可见材质纹理为准",
           color: "以主色为准",
+          viewpoint: "右前方视角；右侧板可见",
           details: ["保留柜门、抽屉、玻璃、层板、柜脚和木纹细节"]
         },
         lighting: "自然光从侧向进入，生成时需要补充地面接触阴影和环境反射。",
@@ -638,6 +639,7 @@ function parseFurnitureIdentity(value: unknown) {
     shelves: toReadableText(item.shelves, "以参考图可见开放格和层板为准"),
     material: toReadableText(item.material, "以参考图可见材质为准"),
     color: toReadableText(item.color, "以参考图主色为准"),
+    viewpoint: toReadableText(item.viewpoint, "右前方视角；侧面方向跟随原产品图可见侧板"),
     details: toReadableList(item.details, ["保留参考图可见细节"])
   };
 }

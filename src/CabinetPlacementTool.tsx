@@ -18,7 +18,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { defaultSettings, perspectiveLabels, TOOL_COST, TOOL_NAME, virtualRoomStyleLabels } from "./constants";
 import styles from "./CabinetPlacementTool.module.css";
 import { analyzeScene, analyzeVirtualFurniture, erasePlannedFurniture, extractFurnitureForeground, generatePlacementImages, generateVirtualRoomImages } from "./services/gemini";
-import { compressDataUrlToBlob, compressImage, GEMINI_IMAGE_TARGET_BYTES } from "./services/image";
+import { compressDataUrlToBlob, compressImage, createLockedProductForeground, GEMINI_IMAGE_TARGET_BYTES } from "./services/image";
 import { composeCabinetPoster } from "./services/poster";
 import {
   consumeIntegral,
@@ -418,10 +418,13 @@ export function CabinetPlacementTool() {
         perspectives: [selectedPerspective],
         clarity: settings.clarity === "4K" ? "2K" : settings.clarity
       };
+      const lockedSideProduct = selectedPerspective === "medium"
+        ? await createLockedProductForeground(furnitureImage)
+        : null;
 
       const generateScenes = (activeSettings: PlacementSettings) => useVirtualRoom
-        ? generateVirtualRoomImages(furnitureImage, analysis, activeSettings, platform.context, platform.prompt)
-        : generatePlacementImages(clearedRoomImage as UploadedImage, furnitureImage, [], analysis, activeSettings, platform.context, platform.prompt);
+        ? generateVirtualRoomImages(furnitureImage, analysis, activeSettings, platform.context, platform.prompt, lockedSideProduct)
+        : generatePlacementImages(clearedRoomImage as UploadedImage, furnitureImage, [], analysis, activeSettings, platform.context, platform.prompt, lockedSideProduct);
 
       let generationBatch = await generateScenes(generationSettings);
       let images = generationBatch.images;
@@ -437,7 +440,7 @@ export function CabinetPlacementTool() {
         title: `${item.title}海报`,
         imageUrl: await composeCabinetPoster({
           sceneImageUrl: item.imageUrl,
-          productImage: furnitureForegroundImage || furnitureImage,
+          productImage: lockedSideProduct || furnitureForegroundImage || furnitureImage,
           copy: analysis.posterCopy,
           seriesName: generationSettings.seriesName,
           productName: generationSettings.productName,

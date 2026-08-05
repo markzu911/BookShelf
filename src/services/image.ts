@@ -177,6 +177,121 @@ export async function preserveTransparentDataUrl(
   };
 }
 
+/**
+ * Builds the side-view product layer directly from the user's uploaded pixels.
+ * Unlike the Gemini cutout path, this function never redraws the cabinet.
+ * It intentionally fails closed when the source does not have a removable,
+ * edge-connected studio background.
+ */
+export async function createLockedProductForeground(productImage: UploadedImage): Promise<UploadedImage> {
+  const image = await loadImage(productImage.dataUrl);
+  const canvas = document.createElement("canvas");
+  canvas.width = image.width;
+  canvas.height = image.height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) throw new Error("浏览器不支持产品像素锁定");
+  ctx.drawImage(image, 0, 0);
+
+  const source = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const removed = removeConnectedStudioBackground(source.data, canvas.width, canvas.height);
+  if (removed.transparentEdgeRatio < 0.86 || removed.opaquePixelRatio < 0.025 || removed.opaquePixelRatio > 0.88) {
+    throw new Error("侧面视角需要背景干净的产品图，当前图片无法可靠锁定原始产品像素。请使用白底、纯色底或透明底产品图。系统不会用 AI 重画柜体代替原产品。");
+  }
+
+  source.data.set(removed.pixels);
+  ctx.putImageData(source, 0, 0);
+  const bounds = findOpaqueBounds(source.data, canvas.width, canvas.height);
+  if (!bounds) throw new Error("没有识别到可锁定的柜体产品像素");
+
+  const padding = Math.max(2, Math.round(Math.max(canvas.width, canvas.height) * 0.008));
+  const sourceX = Math.max(0, bounds.left - padding);
+  const sourceY = Math.max(0, bounds.top - padding);
+  const sourceRight = Math.min(canvas.width, bounds.right + padding + 1);
+  const sourceBottom = Math.min(canvas.height, bounds.bottom + padding + 1);
+  const width = sourceRight - sourceX;
+  const height = sourceBottom - sourceY;
+  const output = document.createElement("canvas");
+  output.width = width;
+  output.height = height;
+  const outputContext = output.getContext("2d");
+  if (!outputContext) throw new Error("浏览器不支持产品像素裁切");
+  outputContext.drawImage(canvas, sourceX, sourceY, width, height, 0, 0, width, height);
+  const dataUrl = output.toDataURL("image/png");
+  const base64 = dataUrl.split(",")[1] ?? "";
+  return {
+    fileName: productImage.fileName.replace(/\.[^.]+$/, "-locked.png"),
+    mimeType: "image/png",
+    size: Math.round((base64.length * 3) / 4),
+    dataUrl,
+    base64,
+    width,
+    height
+  };
+}
+
+export async function composeLockedProductScene(
+  sceneImageUrl: string,
+  lockedProduct: UploadedImage
+): Promise<string> {
+  const [scene, product] = await Promise.all([
+    loadImage(sceneImageUrl),
+    loadImage(lockedProduct.dataUrl)
+  ]);
+  const canvas = document.createElement("canvas");
+  canvas.width = scene.width;
+  canvas.height = scene.height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("浏览器不支持侧面场景合成");
+  ctx.drawImage(scene, 0, 0, canvas.width, canvas.height);
+
+  const targetWidth = canvas.width * 0.86;
+  const targetHeight = canvas.height * 0.78;
+  const scale = Math.min(targetWidth / product.width, targetHeight / product.height);
+  const width = product.width * scale;
+  const height = product.height * scale;
+  const x = (canvas.width - width) / 2;
+  const bottom = canvas.height * 0.91;
+  const y = bottom - height;
+
+  ctx.save();
+  ctx.fillStyle = "rgba(30, 22, 17, 0.25)";
+  ctx.filter = `blur(${Math.max(8, Math.round(canvas.width * 0.012))}px)`;
+  ctx.beginPath();
+  ctx.ellipse(
+    canvas.width / 2,
+    bottom + Math.max(2, canvas.height * 0.006),
+    width * 0.47,
+    Math.max(6, canvas.height * 0.018),
+    0,
+    0,
+    Math.PI * 2
+  );
+  ctx.fill();
+  ctx.restore();
+
+  // The cabinet pixels come from the uploaded product image and are never
+  // sent through image generation in the side-view path.
+  ctx.drawImage(product, x, y, width, height);
+  return canvas.toDataURL("image/jpeg", 0.94);
+}
+
+function findOpaqueBounds(pixels: Uint8ClampedArray, width: number, height: number) {
+  let left = width;
+  let top = height;
+  let right = -1;
+  let bottom = -1;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (pixels[((y * width + x) * 4) + 3] <= 24) continue;
+      left = Math.min(left, x);
+      top = Math.min(top, y);
+      right = Math.max(right, x);
+      bottom = Math.max(bottom, y);
+    }
+  }
+  return right >= left && bottom >= top ? { left, top, right, bottom } : null;
+}
+
 export async function createFixedCameraViews(
   masterImageUrl: string,
   perspectives: PerspectiveOption[],
