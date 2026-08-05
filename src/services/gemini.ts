@@ -174,7 +174,7 @@ export async function generatePlacementImages(
   extraPrompt: string[]
 ): Promise<PerspectiveGenerationBatch> {
   const requestedPerspective = settings.perspectives[0] || "wide";
-  if (requestedPerspective === "close") throw new Error("近景必须使用原始产品像素在前端本地合成");
+  if (requestedPerspective === "close") throw new Error("近景必须通过一次侧面场景生成后在前端本地裁切");
   const requestedPerspectives: PerspectiveOption[] = [requestedPerspective];
   return generatePerspectiveBatch(requestedPerspectives, async (perspective, singleViewSettings) => {
     const perspectivePrompts: Record<string, string> = {
@@ -210,7 +210,7 @@ export async function generateVirtualRoomImages(
   extraPrompt: string[]
 ): Promise<PerspectiveGenerationBatch> {
   const requestedPerspective = settings.perspectives[0] || "wide";
-  if (requestedPerspective === "close") throw new Error("近景必须使用原始产品像素在前端本地合成");
+  if (requestedPerspective === "close") throw new Error("近景必须通过一次侧面场景生成后在前端本地裁切");
   const requestedPerspectives: PerspectiveOption[] = [requestedPerspective];
   return generatePerspectiveBatch(requestedPerspectives, async (perspective, singleViewSettings) => {
     const perspectivePrompts: Record<string, string> = {

@@ -18,7 +18,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { defaultSettings, perspectiveLabels, TOOL_COST, TOOL_NAME, virtualRoomStyleLabels } from "./constants";
 import styles from "./CabinetPlacementTool.module.css";
 import { analyzeScene, analyzeVirtualFurniture, erasePlannedFurniture, extractFurnitureForeground, generatePlacementImages, generateVirtualRoomImages } from "./services/gemini";
-import { compressDataUrlToBlob, compressImage, createPixelLockedCloseupScene, GEMINI_IMAGE_TARGET_BYTES, GEMINI_PRODUCT_TARGET_BYTES, preserveOriginalProductImage } from "./services/image";
+import { compressDataUrlToBlob, compressImage, createGeneratedSceneCloseup, GEMINI_IMAGE_TARGET_BYTES, GEMINI_PRODUCT_TARGET_BYTES } from "./services/image";
 import { composeCabinetPoster } from "./services/poster";
 import {
   consumeIntegral,
@@ -88,7 +88,6 @@ export function CabinetPlacementTool() {
   const [roomImage, setRoomImage] = useState<UploadedImage | null>(null);
   const [useVirtualRoom, setUseVirtualRoom] = useState(false);
   const [furnitureImage, setFurnitureImage] = useState<UploadedImage | null>(null);
-  const [furnitureSourceImage, setFurnitureSourceImage] = useState<UploadedImage | null>(null);
   const [furnitureForegroundImage, setFurnitureForegroundImage] = useState<UploadedImage | null>(null);
   const [clearedRoomImage, setClearedRoomImage] = useState<UploadedImage | null>(null);
   const [settings, setSettings] = useState<PlacementSettings>(defaultSettings);
@@ -239,7 +238,6 @@ export function CabinetPlacementTool() {
     setAgentFlowStarted(true);
     setRoomImage(null);
     setFurnitureImage(null);
-    setFurnitureSourceImage(null);
     setFurnitureForegroundImage(null);
     setClearedRoomImage(null);
     setAnalysis(null);
@@ -255,22 +253,18 @@ export function CabinetPlacementTool() {
     setError("");
     setStatus("正在压缩图片...");
     try {
-      const [image, originalFurnitureSource] = await Promise.all([
-        compressImage(
-          file,
-          kind === "furniture" ? 1800 : undefined,
-          kind === "furniture" ? 0.82 : undefined,
-          kind === "furniture" ? GEMINI_PRODUCT_TARGET_BYTES : GEMINI_IMAGE_TARGET_BYTES
-        ),
-        kind === "furniture" ? preserveOriginalProductImage(file) : Promise.resolve(null)
-      ]);
+      const image = await compressImage(
+        file,
+        kind === "furniture" ? 1800 : undefined,
+        kind === "furniture" ? 0.82 : undefined,
+        kind === "furniture" ? GEMINI_PRODUCT_TARGET_BYTES : GEMINI_IMAGE_TARGET_BYTES
+      );
       setResults([]);
       if (kind === "room") {
         setUseVirtualRoom(false);
         setAgentFlowStarted(true);
         setRoomImage(image);
         setFurnitureImage(null);
-        setFurnitureSourceImage(null);
         setFurnitureForegroundImage(null);
         setClearedRoomImage(null);
         setAnalysis(null);
@@ -281,7 +275,6 @@ export function CabinetPlacementTool() {
         await autoAnalyzeRoom(image);
       } else {
         setFurnitureImage(image);
-        setFurnitureSourceImage(originalFurnitureSource);
         setFurnitureForegroundImage(null);
         setClearedRoomImage(null);
         addChatMessage({ role: "user", text: "已上传柜体产品图", image });
@@ -420,36 +413,32 @@ export function CabinetPlacementTool() {
         await verifyIntegral(platform);
       }
       const selectedPerspective = settings.perspectives[0] || "wide";
-      if (selectedPerspective === "close" && !furnitureSourceImage) {
-        throw new Error("近景缺少原始产品图，请重新上传柜体产品图");
-      }
       let generationSettings: PlacementSettings = {
         ...settings,
         perspectives: [selectedPerspective],
-        clarity: settings.clarity === "4K" ? "2K" : settings.clarity
+        clarity: selectedPerspective === "close" ? "2K" : settings.clarity === "4K" ? "2K" : settings.clarity
       };
 
       const generateScenes = (activeSettings: PlacementSettings) => useVirtualRoom
         ? generateVirtualRoomImages(furnitureImage, analysis, activeSettings, platform.context, platform.prompt)
         : generatePlacementImages(clearedRoomImage as UploadedImage, furnitureImage, [], analysis, activeSettings, platform.context, platform.prompt);
 
-      const generationBatch = selectedPerspective === "close"
-        ? {
-            images: [{
-              perspective: "close" as const,
-              title: perspectiveLabels.close,
-              imageUrl: await createPixelLockedCloseupScene(
-                useVirtualRoom ? null : (clearedRoomImage || roomImage)?.dataUrl || null,
-                (furnitureSourceImage as UploadedImage).dataUrl
-              )
-            }],
-            failures: []
-          }
-        : await generateScenes(generationSettings);
+      const sourceGenerationSettings: PlacementSettings = selectedPerspective === "close"
+        ? { ...generationSettings, perspectives: ["medium"], clarity: "2K" }
+        : generationSettings;
+      const generationBatch = await generateScenes(sourceGenerationSettings);
       let images = generationBatch.images;
       let generationFailures = generationBatch.failures;
       if (!images.length) {
         throw new Error(generationFailures.map((failure) => `${failure.perspective}：${failure.message}`).join("；") || "所选视角未生成成功");
+      }
+      if (selectedPerspective === "close") {
+        const closeSource = images.find((image) => image.perspective === "medium") || images[0];
+        images = [{
+          perspective: "close",
+          title: perspectiveLabels.close,
+          imageUrl: await createGeneratedSceneCloseup(closeSource.imageUrl)
+        }];
       }
       generationSettings = { ...generationSettings, perspectives: images.map((image) => image.perspective) };
       setStatus("场景主图已生成，正在排版 3:4 家居海报...");
@@ -579,7 +568,6 @@ export function CabinetPlacementTool() {
     setUseVirtualRoom(false);
     setRoomImage(null);
     setFurnitureImage(null);
-    setFurnitureSourceImage(null);
     setFurnitureForegroundImage(null);
     setClearedRoomImage(null);
     setAnalysis(null);

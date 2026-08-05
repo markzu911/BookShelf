@@ -4,7 +4,6 @@ import { removeConnectedStudioBackground } from "./backgroundMask";
 const MAX_INPUT_SIZE = 20 * 1024 * 1024;
 const MAX_EDGE = 1200;
 const JPEG_QUALITY = 0.72;
-const MAX_CLOSEUP_UPSCALE = 2;
 
 export const GEMINI_IMAGE_TARGET_BYTES = 420 * 1024;
 export const GEMINI_PRODUCT_TARGET_BYTES = 900 * 1024;
@@ -27,56 +26,6 @@ export async function compressImage(
   const originalDataUrl = await readFileAsDataUrl(file);
   const img = await loadImage(originalDataUrl);
   return renderCompressedImage(img, file.name.replace(/\.[^.]+$/, ".jpg"), maxEdge, quality, targetBytes);
-}
-
-export async function preserveOriginalProductImage(file: File): Promise<UploadedImage> {
-  if (!file.type.startsWith("image/")) {
-    throw new Error("请上传图片文件");
-  }
-  if (file.size > MAX_INPUT_SIZE) {
-    throw new Error("图片不能超过 20MB");
-  }
-
-  const dataUrl = await readFileAsDataUrl(file);
-  const image = await loadImage(dataUrl);
-  const mimeType = file.type === "image/png"
-    ? "image/png"
-    : file.type === "image/jpeg" || file.type === "image/jpg"
-      ? "image/jpeg"
-      : null;
-
-  if (mimeType) {
-    return {
-      fileName: file.name,
-      mimeType,
-      size: file.size,
-      dataUrl,
-      base64: dataUrl.split(",")[1] ?? "",
-      width: image.width,
-      height: image.height
-    };
-  }
-
-  const scale = Math.min(1, 3200 / Math.max(image.width, image.height));
-  const width = Math.max(1, Math.round(image.width * scale));
-  const height = Math.max(1, Math.round(image.height * scale));
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("浏览器不支持保留原始产品图");
-  ctx.drawImage(image, 0, 0, width, height);
-  const pngDataUrl = canvas.toDataURL("image/png");
-  const base64 = pngDataUrl.split(",")[1] ?? "";
-  return {
-    fileName: file.name.replace(/\.[^.]+$/, ".png"),
-    mimeType: "image/png",
-    size: Math.round((base64.length * 3) / 4),
-    dataUrl: pngDataUrl,
-    base64,
-    width,
-    height
-  };
 }
 
 function renderCompressedImage(
@@ -229,31 +178,8 @@ export async function preserveTransparentDataUrl(
   };
 }
 
-export async function createPixelLockedCloseupScene(
-  backgroundImageUrl: string | null,
-  productImageUrl: string
-): Promise<string> {
-  const product = await loadImage(productImageUrl);
-  const productCanvas = document.createElement("canvas");
-  productCanvas.width = product.width;
-  productCanvas.height = product.height;
-  const productContext = productCanvas.getContext("2d", { willReadFrequently: true });
-  if (!productContext) throw new Error("浏览器不支持近景产品处理");
-  productContext.drawImage(product, 0, 0);
-
-  const pixels = productContext.getImageData(0, 0, product.width, product.height);
-  const removal = removeConnectedStudioBackground(pixels.data, product.width, product.height);
-  if (removal.transparentEdgeRatio < 0.72 || removal.opaquePixelRatio < 0.04 || removal.opaquePixelRatio > 0.92) {
-    throw new Error("产品图背景过于复杂，无法在不重绘产品的前提下生成可靠近景；请上传背景简洁的产品图");
-  }
-  pixels.data.set(removal.pixels);
-  productContext.putImageData(pixels, 0, 0);
-
-  const bounds = findOpaqueBounds(removal.pixels, product.width, product.height);
-  if (!bounds || bounds.width < 32 || bounds.height < 32) {
-    throw new Error("未能从产品图中识别出清晰柜体，请上传主体完整且背景简洁的产品图");
-  }
-
+export async function createGeneratedSceneCloseup(sceneImageUrl: string): Promise<string> {
+  const scene = await loadImage(sceneImageUrl);
   const outputWidth = 1600;
   const outputHeight = Math.round(outputWidth * 968 / 1080);
   const canvas = document.createElement("canvas");
@@ -262,95 +188,22 @@ export async function createPixelLockedCloseupScene(
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("浏览器不支持近景合成");
 
-  if (backgroundImageUrl) {
-    const background = await loadImage(backgroundImageUrl);
-    ctx.save();
-    ctx.filter = "blur(14px) saturate(0.78) brightness(1.04)";
-    drawCoverImage(ctx, background, -28, -28, outputWidth + 56, outputHeight + 56);
-    ctx.restore();
-  } else {
-    const wall = ctx.createLinearGradient(0, 0, 0, outputHeight);
-    wall.addColorStop(0, "#e7ded1");
-    wall.addColorStop(0.72, "#cfc0ad");
-    wall.addColorStop(1, "#9f8a73");
-    ctx.fillStyle = wall;
-    ctx.fillRect(0, 0, outputWidth, outputHeight);
-  }
-  const veil = ctx.createLinearGradient(0, 0, outputWidth, outputHeight);
-  veil.addColorStop(0, "rgba(255, 250, 242, 0.34)");
-  veil.addColorStop(1, "rgba(40, 29, 21, 0.12)");
-  ctx.fillStyle = veil;
-  ctx.fillRect(0, 0, outputWidth, outputHeight);
+  const targetRatio = outputWidth / outputHeight;
+  const baseWidth = Math.min(scene.width, scene.height * targetRatio);
+  const baseHeight = baseWidth / targetRatio;
+  const cropScale = 0.52;
+  const cropWidth = baseWidth * cropScale;
+  const cropHeight = baseHeight * cropScale;
+  const focalX = scene.width * 0.5;
+  const focalY = scene.height * 0.53;
+  const sourceX = clamp(focalX - cropWidth / 2, 0, scene.width - cropWidth);
+  const sourceY = clamp(focalY - cropHeight / 2, 0, scene.height - cropHeight);
 
-  const desiredDrawWidth = outputWidth * 0.58;
-  const desiredDrawHeight = outputHeight * 0.78;
-  const cropWidth = Math.min(
-    bounds.width,
-    Math.max(bounds.width * 0.42, desiredDrawWidth / MAX_CLOSEUP_UPSCALE)
-  );
-  const cropHeight = Math.min(
-    bounds.height,
-    Math.max(bounds.height * 0.72, desiredDrawHeight / MAX_CLOSEUP_UPSCALE)
-  );
-  const focalX = bounds.x + bounds.width * 0.38;
-  const focalY = bounds.y + bounds.height * 0.56;
-  const sourceX = clamp(focalX - cropWidth / 2, bounds.x, bounds.x + bounds.width - cropWidth);
-  const sourceY = clamp(focalY - cropHeight / 2, bounds.y, bounds.y + bounds.height - cropHeight);
-  const desiredScale = Math.min(desiredDrawWidth / cropWidth, desiredDrawHeight / cropHeight);
-  const scale = Math.min(MAX_CLOSEUP_UPSCALE, desiredScale);
-  const drawWidth = cropWidth * scale;
-  const drawHeight = cropHeight * scale;
-  const drawX = (outputWidth - drawWidth) / 2;
-  const drawY = (outputHeight - drawHeight) / 2;
-
-  ctx.save();
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
-  ctx.shadowColor = "rgba(24, 18, 13, 0.22)";
-  ctx.shadowBlur = 20;
-  ctx.shadowOffsetY = 10;
-  ctx.drawImage(productCanvas, sourceX, sourceY, cropWidth, cropHeight, drawX, drawY, drawWidth, drawHeight);
-  ctx.restore();
+  ctx.drawImage(scene, sourceX, sourceY, cropWidth, cropHeight, 0, 0, outputWidth, outputHeight);
 
   return canvas.toDataURL("image/png");
-}
-
-function findOpaqueBounds(
-  pixels: Uint8ClampedArray,
-  width: number,
-  height: number
-): { x: number; y: number; width: number; height: number } | null {
-  let minX = width;
-  let minY = height;
-  let maxX = -1;
-  let maxY = -1;
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      if (pixels[(y * width + x) * 4 + 3] <= 16) continue;
-      minX = Math.min(minX, x);
-      minY = Math.min(minY, y);
-      maxX = Math.max(maxX, x);
-      maxY = Math.max(maxY, y);
-    }
-  }
-  if (maxX < minX || maxY < minY) return null;
-  return { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 };
-}
-
-function drawCoverImage(
-  ctx: CanvasRenderingContext2D,
-  image: HTMLImageElement,
-  x: number,
-  y: number,
-  width: number,
-  height: number
-): void {
-  const scale = Math.max(width / image.width, height / image.height);
-  const sourceWidth = width / scale;
-  const sourceHeight = height / scale;
-  const sourceX = (image.width - sourceWidth) / 2;
-  const sourceY = (image.height - sourceHeight) / 2;
-  ctx.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, x, y, width, height);
 }
 
 function clamp(value: number, min: number, max: number): number {
